@@ -1,16 +1,39 @@
 // charts.js
 // -----------------------------------------------------------------------------
 // Light wrapper around Chart.js for visualizing:
-//   - Championship odds (bar chart)
-//   - Semifinal win odds (stacked bar per matchup)
-//   - Optional score distribution curves
+//  - Championship odds (bar chart)
+//  - Semifinal win odds (stacked bar per matchup)
+//  - Optional team score distribution curves (line chart)
 // -----------------------------------------------------------------------------
 //
-// Exposes:
+// Exposes a global:
 //   window.PlayoffCharts = {
 //     renderChampionshipOdds(canvasId, oddsArray),
 //     renderSemifinalOdds(canvasId, semifinalArray),
 //     renderScoreDistribution(canvasId, distConfig)
+//   };
+//
+// Where:
+//   oddsArray = [
+//     { teamName: "The Jeffersons", probability: 0.40 },
+//     { teamName: "De’Von Intervention", probability: 0.37 },
+//     ...
+//   ]
+//
+//   semifinalArray = [
+//     {
+//       id: "semi1",
+//       label: "De’Von Intervention vs SirTony",
+//       favoriteName: "De’Von Intervention",
+//       favoriteWinProb: 0.74,    // 0–1
+//       underdogName: "SirTony"
+//     },
+//     ...
+//   ]
+//
+//   distConfig = {
+//     label: "De’Von Intervention – Score Distribution",
+//     points: [ { x: 110, y: 0.02 }, { x: 120, y: 0.05 }, ... ]
 //   };
 // -----------------------------------------------------------------------------
 
@@ -18,7 +41,9 @@
     "use strict";
   
     if (!window.Chart) {
-      console.warn("[charts.js] Chart.js not found – chart rendering will be skipped.");
+      console.warn(
+        "[charts.js] Chart.js not found. PlayoffCharts will be a no-op."
+      );
     }
   
     const chartsById = {};
@@ -26,7 +51,7 @@
     function getContext(canvasId) {
       const el = document.getElementById(canvasId);
       if (!el) {
-        console.warn("[charts.js] Canvas not found:", canvasId);
+        console.warn("[charts.js] Canvas not found for id:", canvasId);
         return null;
       }
       return el.getContext("2d");
@@ -41,7 +66,12 @@
     }
   
     function renderChampionshipOdds(canvasId, oddsArray) {
-      if (!window.Chart || !Array.isArray(oddsArray) || oddsArray.length === 0) return;
+      if (!window.Chart) return;
+      if (!Array.isArray(oddsArray) || oddsArray.length === 0) {
+        cleanupChart(canvasId);
+        return;
+      }
+  
       const ctx = getContext(canvasId);
       if (!ctx) return;
   
@@ -50,7 +80,7 @@
       const labels = oddsArray.map((o) => o.teamName);
       const percents = oddsArray.map((o) =>
         Math.round((o.probability || 0) * 1000) / 10
-      );
+      ); // 0.401 -> 40.1
   
       chartsById[canvasId] = new Chart(ctx, {
         type: "bar",
@@ -96,8 +126,12 @@
     }
   
     function renderSemifinalOdds(canvasId, semifinalArray) {
-      if (!window.Chart || !Array.isArray(semifinalArray) || semifinalArray.length === 0)
+      if (!window.Chart) return;
+      if (!Array.isArray(semifinalArray) || semifinalArray.length === 0) {
+        cleanupChart(canvasId);
         return;
+      }
+  
       const ctx = getContext(canvasId);
       if (!ctx) return;
   
@@ -107,10 +141,13 @@
         (m) => m.label || `${m.favoriteName} vs ${m.underdogName}`
       );
       const favPercents = semifinalArray.map((m) =>
-        Math.round((m.favoriteWinProb || 0) * 1000) / 10
+        Math.round(((m.favoriteWinProb || 0) * 1000) / 10)
       );
       const dogPercents = semifinalArray.map((m) => {
-        const p = m.favoriteWinProb != null ? 1 - m.favoriteWinProb : 0;
+        const p =
+          m.favoriteWinProb != null && Number.isFinite(m.favoriteWinProb)
+            ? 1 - m.favoriteWinProb
+            : 0.0;
         return Math.round(p * 1000) / 10;
       });
   
@@ -163,7 +200,12 @@
     }
   
     function renderScoreDistribution(canvasId, distConfig) {
-      if (!window.Chart || !distConfig || !Array.isArray(distConfig.points)) return;
+      if (!window.Chart) return;
+      if (!distConfig || !Array.isArray(distConfig.points)) {
+        cleanupChart(canvasId);
+        return;
+      }
+  
       const ctx = getContext(canvasId);
       if (!ctx) return;
   
@@ -193,9 +235,9 @@
             tooltip: {
               callbacks: {
                 label: (context) =>
-                  `P(score ≈ ${context.label}): ${(context.parsed.y * 100).toFixed(
-                    1
-                  )}%`,
+                  `P(score ≈ ${context.label}): ${(
+                    context.parsed.y * 100
+                  ).toFixed(1)}%`,
               },
             },
           },
