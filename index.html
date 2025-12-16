@@ -56,6 +56,32 @@
       color: var(--text-soft);
     }
 
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+    }
+
+    .controls select,
+    .controls button {
+      background: #020617;
+      border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      color: var(--text-main);
+      padding: 6px 12px;
+      font-size: 0.85rem;
+    }
+
+    .controls button {
+      cursor: pointer;
+      border-color: var(--accent);
+    }
+
+    .controls button:hover {
+      background: var(--accent-soft);
+    }
+
     .layout {
       display: grid;
       grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
@@ -111,12 +137,6 @@
     .matchup-teams {
       font-size: 0.95rem;
       font-weight: 500;
-    }
-
-    .seed-label {
-      font-size: 0.75rem;
-      color: var(--text-soft);
-      margin-left: 4px;
     }
 
     .matchup-meta {
@@ -227,6 +247,78 @@
     canvas {
       max-width: 100%;
     }
+
+    /* --- Tabs + Rosters --- */
+    .top-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+      background: #0f172a;
+      color: var(--text-main);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .tab-btn.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .roster-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .roster-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .roster-player {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.9rem;
+    }
+
+    .roster-player:last-child {
+      border-bottom: none;
+    }
+
+    .player-pos {
+      font-weight: 600;
+    }
+
+    .player-name {
+      color: #e5e7eb;
+    }
+
+    .player-team {
+      color: var(--text-soft);
+    }
   </style>
 </head>
 <body>
@@ -238,20 +330,44 @@
           Loading league info…
         </div>
       </div>
+      <div class="controls">
+        <label>
+          Week:
+          <select id="week-select"></select>
+        </label>
+        <button id="refresh-btn" type="button">Refresh</button>
+      </div>
     </header>
 
     <main class="layout">
       <section class="panel">
-        <h2>Matchups</h2>
-        <div id="matchups-container">
-          <div class="loading">Fetching semifinal matchups…</div>
+        <div class="top-tabs">
+          <button class="tab-btn active" data-tab="matchups">Matchups</button>
+          <button class="tab-btn" data-tab="rosters">Rosters</button>
+        </div>
+
+        <div id="tab-matchups" class="tab-panel active">
+          <h2>Matchups</h2>
+          <div id="matchups-container">
+            <div class="loading">Fetching semifinal matchups…</div>
+          </div>
+        </div>
+
+        <div id="tab-rosters" class="tab-panel">
+          <h2>Rosters</h2>
+          <div class="controls" style="margin-bottom: 10px;">
+            <select id="roster-select" multiple size="6" style="width:100%; background:#020617; color:#e5e7eb; border:1px solid #4b5563; border-radius:8px; padding:4px;"></select>
+          </div>
+          <div id="roster-view-container">
+            <div class="loading">Select one or more teams above to view their rosters.</div>
+          </div>
         </div>
       </section>
 
       <section class="panel">
         <h2>Newsletter</h2>
         <div id="newsletter-content" class="newsletter-body">
-          <p>As soon as the league data loads, this panel will show the semifinal preview, win odds, and title odds for De’Von Intervention, The Jeffersons, SirTony, and Tightest Ends.</p>
+          <p>As soon as the league data loads, this panel will show the playoff preview, win odds, and title odds for the remaining teams.</p>
           <p class="small">This page runs entirely in your browser using Sleeper’s public API.</p>
 
           <div class="charts-wrapper">
@@ -269,17 +385,102 @@
     </main>
   </div>
 
-  <!-- Vendor: Chart.js (optional; if blocked, charts will just no-op) -->
+  <!-- Vendor: Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- If you prefer, download chart.umd.js into your repo and replace the line above with: -->
-  <!-- <script src="chart.umd.js"></script> -->
 
-  <!-- App scripts (order matters) -->
+  <!-- App scripts -->
   <script src="league_config.js"></script>
   <script src="sleeper_client.js"></script>
   <script src="models.js"></script>
   <script src="projections.js"></script>
   <script src="charts.js"></script>
   <script src="newsletter.js"></script>
+
+  <!-- Tabs + Roster viewer -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // --- tab switcher ---
+      const tabButtons = document.querySelectorAll(".tab-btn");
+      const tabPanels = document.querySelectorAll(".tab-panel");
+      tabButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          tabButtons.forEach((b) => b.classList.remove("active"));
+          tabPanels.forEach((p) => p.classList.remove("active"));
+          btn.classList.add("active");
+          const target = btn.getAttribute("data-tab");
+          const panel = document.getElementById("tab-" + target);
+          if (panel) panel.classList.add("active");
+        });
+      });
+
+      // --- roster view setup ---
+      const rosterSelect = document.getElementById("roster-select");
+      const rosterContainer = document.getElementById("roster-view-container");
+
+      const interval = setInterval(() => {
+        if (window.__LAST_BUNDLE__ && window.__LAST_BUNDLE__.rosters) {
+          clearInterval(interval);
+          const bundle = window.__LAST_BUNDLE__;
+          const users = bundle.users || [];
+          const rosters = bundle.rosters || [];
+
+          const rosterMap = {};
+          rosters.forEach((r) => {
+            const u = users.find((x) => x.user_id === r.owner_id);
+            const name = u ? u.display_name : "Unknown";
+            rosterMap[r.roster_id] = name;
+          });
+
+          rosterSelect.innerHTML = Object.entries(rosterMap)
+            .map(([id, name]) => `<option value="${id}">${name}</option>`)
+            .join("");
+
+          rosterSelect.addEventListener("change", () => {
+            const selected = Array.from(rosterSelect.selectedOptions).map(
+              (opt) => Number(opt.value)
+            );
+            showRosters(selected, rosters, users);
+          });
+
+          function showRosters(ids, rosters, users) {
+            if (!ids.length) {
+              rosterContainer.innerHTML =
+                '<div class="loading">Select one or more teams above to view their rosters.</div>';
+              return;
+            }
+
+            const allCards = ids
+              .map((id) => {
+                const roster = rosters.find((r) => r.roster_id === id);
+                const user = users.find((u) => u.user_id === roster?.owner_id);
+                const name = user?.display_name || `Team ${id}`;
+                const starters = roster?.starters || [];
+                const playerList = starters
+                  .map(
+                    (pid) => `
+                    <div class="roster-player">
+                      <span class="player-pos">${pid}</span>
+                      <span class="player-name">${window.__SLEEPER_PLAYER_MAP?.[pid]?.full_name || pid}</span>
+                    </div>`
+                  )
+                  .join("");
+
+                return `
+                  <div class="roster-card">
+                    <div class="roster-header">
+                      <strong>${name}</strong>
+                      <span class="small">Roster ID: ${id}</span>
+                    </div>
+                    ${playerList || "<p class='small'>No starters listed</p>"}
+                  </div>`;
+              })
+              .join("");
+
+            rosterContainer.innerHTML = allCards;
+          }
+        }
+      }, 500);
+    });
+  </script>
 </body>
 </html>
