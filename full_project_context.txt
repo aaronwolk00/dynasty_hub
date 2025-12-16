@@ -1,0 +1,2804 @@
+=== START FILE: charts.js ===
+// charts.js
+// -----------------------------------------------------------------------------
+// Light wrapper around Chart.js for visualizing:
+//  - Championship odds (bar chart)
+//  - Semifinal win odds (stacked bar per matchup)
+//  - Optional team score distribution curves (line chart)
+// -----------------------------------------------------------------------------
+//
+// Exposes a global:
+//   window.PlayoffCharts = {
+//     renderChampionshipOdds(canvasId, oddsArray),
+//     renderSemifinalOdds(canvasId, semifinalArray),
+//     renderScoreDistribution(canvasId, distConfig)
+//   };
+//
+// Where:
+//   oddsArray = [
+//     { teamName: "The Jeffersons", probability: 0.40 },
+//     { teamName: "De’Von Intervention", probability: 0.37 },
+//     ...
+//   ]
+//
+//   semifinalArray = [
+//     {
+//       id: "semi1",
+//       label: "De’Von Intervention vs SirTony",
+//       favoriteName: "De’Von Intervention",
+//       favoriteWinProb: 0.74,    // 0–1
+//       underdogName: "SirTony"
+//     },
+//     ...
+//   ]
+//
+//   distConfig = {
+//     label: "De’Von Intervention – Score Distribution",
+//     points: [ { x: 110, y: 0.02 }, { x: 120, y: 0.05 }, ... ]
+//   };
+// -----------------------------------------------------------------------------
+
+(function () {
+    "use strict";
+  
+    if (!window.Chart) {
+      console.warn(
+        "[charts.js] Chart.js not found. PlayoffCharts will be a no-op."
+      );
+    }
+  
+    const chartsById = {};
+  
+    function getContext(canvasId) {
+      const el = document.getElementById(canvasId);
+      if (!el) {
+        console.warn("[charts.js] Canvas not found for id:", canvasId);
+        return null;
+      }
+      return el.getContext("2d");
+    }
+  
+    function cleanupChart(canvasId) {
+      const existing = chartsById[canvasId];
+      if (existing) {
+        existing.destroy();
+        delete chartsById[canvasId];
+      }
+    }
+  
+    function renderChampionshipOdds(canvasId, oddsArray) {
+      if (!window.Chart) return;
+      if (!Array.isArray(oddsArray) || oddsArray.length === 0) {
+        cleanupChart(canvasId);
+        return;
+      }
+  
+      const ctx = getContext(canvasId);
+      if (!ctx) return;
+  
+      cleanupChart(canvasId);
+  
+      const labels = oddsArray.map((o) => o.teamName);
+      const percents = oddsArray.map((o) =>
+        Math.round((o.probability || 0) * 1000) / 10
+      ); // 0.401 -> 40.1
+  
+      chartsById[canvasId] = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Title Odds (%)",
+              data: percents,
+              borderWidth: 1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (context) => `${context.parsed.y.toFixed(1)}%`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: {
+                maxRotation: 30,
+                minRotation: 0,
+              },
+              grid: { display: false },
+            },
+            y: {
+              beginAtZero: true,
+              suggestedMax: 50,
+              ticks: {
+                callback: (val) => `${val}%`,
+              },
+            },
+          },
+        },
+      });
+    }
+  
+    function renderSemifinalOdds(canvasId, semifinalArray) {
+      if (!window.Chart) return;
+      if (!Array.isArray(semifinalArray) || semifinalArray.length === 0) {
+        cleanupChart(canvasId);
+        return;
+      }
+  
+      const ctx = getContext(canvasId);
+      if (!ctx) return;
+  
+      cleanupChart(canvasId);
+  
+      const labels = semifinalArray.map(
+        (m) => m.label || `${m.favoriteName} vs ${m.underdogName}`
+      );
+      const favPercents = semifinalArray.map((m) =>
+        Math.round(((m.favoriteWinProb || 0) * 1000) / 10)
+      );
+      const dogPercents = semifinalArray.map((m) => {
+        const p =
+          m.favoriteWinProb != null && Number.isFinite(m.favoriteWinProb)
+            ? 1 - m.favoriteWinProb
+            : 0.0;
+        return Math.round(p * 1000) / 10;
+      });
+  
+      chartsById[canvasId] = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Favorite",
+              data: favPercents,
+              borderWidth: 1,
+              stack: "stack0",
+            },
+            {
+              label: "Underdog",
+              data: dogPercents,
+              borderWidth: 1,
+              stack: "stack0",
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (context) =>
+                  `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              stacked: true,
+              grid: { display: false },
+            },
+            y: {
+              stacked: true,
+              beginAtZero: true,
+              max: 100,
+              ticks: {
+                callback: (val) => `${val}%`,
+              },
+            },
+          },
+        },
+      });
+    }
+  
+    function renderScoreDistribution(canvasId, distConfig) {
+      if (!window.Chart) return;
+      if (!distConfig || !Array.isArray(distConfig.points)) {
+        cleanupChart(canvasId);
+        return;
+      }
+  
+      const ctx = getContext(canvasId);
+      if (!ctx) return;
+  
+      cleanupChart(canvasId);
+  
+      const xs = distConfig.points.map((p) => p.x);
+      const ys = distConfig.points.map((p) => p.y);
+  
+      chartsById[canvasId] = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: xs,
+          datasets: [
+            {
+              label: distConfig.label || "Score Distribution",
+              data: ys,
+              borderWidth: 2,
+              tension: 0.25,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (context) =>
+                  `P(score ≈ ${context.label}): ${(
+                    context.parsed.y * 100
+                  ).toFixed(1)}%`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              title: { display: true, text: "Fantasy Points" },
+              grid: { display: false },
+            },
+            y: {
+              title: { display: true, text: "Probability" },
+              beginAtZero: true,
+            },
+          },
+        },
+      });
+    }
+  
+    window.PlayoffCharts = {
+      renderChampionshipOdds,
+      renderSemifinalOdds,
+      renderScoreDistribution,
+    };
+  })();
+  
+=== END FILE: charts.js ===
+
+=== START FILE: index.html ===
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dynasty Playoff Hub</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #020617;
+      --bg-panel: #020617;
+      --bg-card: rgba(15, 23, 42, 0.95);
+      --border-subtle: #1f2937;
+      --border-strong: #4b5563;
+      --accent: #22c55e;
+      --accent-soft: rgba(34, 197, 94, 0.16);
+      --text-main: #e5e7eb;
+      --text-soft: #9ca3af;
+      --danger: #f97373;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #0f172a, #020617 60%);
+      color: var(--text-main);
+      min-height: 100vh;
+    }
+
+    #app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    .top-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 8px;
+    }
+
+    .top-bar-title {
+      font-size: 1.4rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .top-bar-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-soft);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+    }
+
+    .controls select,
+    .controls button {
+      background: #020617;
+      border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      color: var(--text-main);
+      padding: 6px 12px;
+      font-size: 0.85rem;
+    }
+
+    .controls button {
+      cursor: pointer;
+      border-color: var(--accent);
+    }
+
+    .controls button:hover {
+      background: var(--accent-soft);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--bg-panel);
+      border-radius: 16px;
+      border: 1px solid var(--border-subtle);
+      padding: 16px;
+      box-shadow: 0 18px 35px rgba(0, 0, 0, 0.45);
+      min-height: 240px;
+    }
+
+    .panel h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0 0 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+    }
+
+    .matchup-card {
+      background: var(--bg-card);
+      border-radius: 14px;
+      border: 1px solid #111827;
+      padding: 12px;
+      margin-bottom: 10px;
+      transition: border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+    }
+
+    .matchup-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: 0 12px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    .matchup-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4px;
+    }
+
+    .matchup-teams {
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    .matchup-meta {
+      font-size: 0.75rem;
+      color: var(--text-soft);
+    }
+
+    .matchup-scores {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 0.85rem;
+    }
+
+    .matchup-scores span strong {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .favorite {
+      border-left: 3px solid var(--accent);
+      padding-left: 9px;
+    }
+
+    .newsletter-body {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: var(--text-main);
+      max-width: 100%;
+    }
+
+    .newsletter-body h3 {
+      font-size: 1.05rem;
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+
+    .newsletter-body p {
+      margin: 8px 0;
+    }
+
+    .odds-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+
+    .odds-table th,
+    .odds-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border-subtle);
+      text-align: left;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-soft);
+      margin-left: 4px;
+    }
+
+    .tag-favorite {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .tag-underdog {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .small {
+      font-size: 0.8rem;
+      color: var(--text-soft);
+    }
+
+    .loading {
+      font-size: 0.9rem;
+      color: var(--text-soft);
+    }
+
+    .charts-wrapper {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .chart-card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+      padding: 12px;
+    }
+
+    .chart-card h3 {
+      font-size: 0.95rem;
+      margin: 0 0 8px;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    canvas {
+      max-width: 100%;
+    }
+
+    /* --- Tabs + Rosters --- */
+    .top-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+      background: #0f172a;
+      color: var(--text-main);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .tab-btn.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .roster-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .roster-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .roster-player {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.9rem;
+    }
+
+    .roster-player:last-child {
+      border-bottom: none;
+    }
+
+    .player-pos {
+      font-weight: 600;
+    }
+
+    .player-name {
+      color: #e5e7eb;
+    }
+
+    .player-team {
+      color: var(--text-soft);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="top-bar">
+      <div>
+        <div class="top-bar-title">Playoff Hub</div>
+        <div class="top-bar-subtitle" id="league-subtitle">
+          Loading league info…
+        </div>
+      </div>
+      <div class="controls">
+        <label>
+          Week:
+          <select id="week-select"></select>
+        </label>
+        <button id="refresh-btn" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="top-tabs">
+          <button class="tab-btn active" data-tab="matchups">Matchups</button>
+          <button class="tab-btn" data-tab="rosters">Rosters</button>
+        </div>
+
+        <div id="tab-matchups" class="tab-panel active">
+          <h2>Matchups</h2>
+          <div id="matchups-container">
+            <div class="loading">Fetching semifinal matchups…</div>
+          </div>
+        </div>
+
+        <div id="tab-rosters" class="tab-panel">
+          <h2>Rosters</h2>
+          <div class="controls" style="margin-bottom: 10px;">
+            <select id="roster-select" multiple size="6" style="width:100%; background:#020617; color:#e5e7eb; border:1px solid #4b5563; border-radius:8px; padding:4px;"></select>
+          </div>
+          <div id="roster-view-container">
+            <div class="loading">Select one or more teams above to view their rosters.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Newsletter</h2>
+        <div id="newsletter-content" class="newsletter-body">
+          <p>As soon as the league data loads, this panel will show the playoff preview, win odds, and title odds for the remaining teams.</p>
+          <p class="small">This page runs entirely in your browser using Sleeper’s public API.</p>
+
+          <div class="charts-wrapper">
+            <div class="chart-card">
+              <h3>Semifinal Win Odds</h3>
+              <canvas id="semifinal-odds-chart" height="140"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Championship Odds</h3>
+              <canvas id="title-odds-chart" height="160"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Vendor: Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Load Sleeper player metadata (maps player_id → name/pos/team) -->
+<script>
+    (async function preloadSleeperPlayers() {
+      try {
+        const res = await fetch("https://api.sleeper.app/v1/players/nfl");
+        const data = await res.json();
+        const map = {};
+        for (const [id, p] of Object.entries(data)) {
+          map[id] = {
+            full_name: p.full_name || p.first_name + " " + p.last_name,
+            pos: p.position,
+            team: p.team,
+            color: p.team_color || "#9ca3af",
+          };
+        }
+        window.__SLEEPER_PLAYER_MAP__ = map;
+        console.log("[player-map] Loaded", Object.keys(map).length, "players");
+      } catch (err) {
+        console.warn("Failed to load Sleeper player map", err);
+        window.__SLEEPER_PLAYER_MAP__ = {};
+      }
+    })();
+</script>
+    
+
+  <!-- App scripts -->
+  <script src="league_config.js"></script>
+  <script src="sleeper_client.js"></script>
+  <script src="models.js"></script>
+  <script src="projections.js"></script>
+  <script src="charts.js"></script>
+  <script src="newsletter.js"></script>
+
+  <!-- Tabs + Roster viewer -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // --- tab switcher ---
+      const tabButtons = document.querySelectorAll(".tab-btn");
+      const tabPanels = document.querySelectorAll(".tab-panel");
+      tabButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          tabButtons.forEach((b) => b.classList.remove("active"));
+          tabPanels.forEach((p) => p.classList.remove("active"));
+          btn.classList.add("active");
+          const target = btn.getAttribute("data-tab");
+          const panel = document.getElementById("tab-" + target);
+          if (panel) panel.classList.add("active");
+        });
+      });
+
+      // --- roster view setup ---
+      const rosterSelect = document.getElementById("roster-select");
+      const rosterContainer = document.getElementById("roster-view-container");
+
+      const interval = setInterval(() => {
+        if (window.__LAST_BUNDLE__ && window.__LAST_BUNDLE__.rosters) {
+          clearInterval(interval);
+          const bundle = window.__LAST_BUNDLE__;
+          const users = bundle.users || [];
+          const rosters = bundle.rosters || [];
+
+          const rosterMap = {};
+          rosters.forEach((r) => {
+            const u = users.find((x) => x.user_id === r.owner_id);
+            const name = u ? u.display_name : "Unknown";
+            rosterMap[r.roster_id] = name;
+          });
+
+          rosterSelect.innerHTML = Object.entries(rosterMap)
+            .map(([id, name]) => `<option value="${id}">${name}</option>`)
+            .join("");
+
+          rosterSelect.addEventListener("change", () => {
+            const selected = Array.from(rosterSelect.selectedOptions).map(
+              (opt) => Number(opt.value)
+            );
+            showRosters(selected, rosters, users);
+          });
+
+          function showRosters(ids, rosters, users) {
+            if (!ids.length) {
+              rosterContainer.innerHTML =
+                '<div class="loading">Select one or more teams above to view their rosters.</div>';
+              return;
+            }
+
+            const playersMap =
+              (typeof window !== "undefined" && window.__SLEEPER_PLAYER_MAP__) || {};
+
+            const allCards = ids
+              .map(function (id) {
+                const roster = rosters.find(function (r) {
+                  return r.roster_id === id;
+                });
+                const user = users.find(function (u) {
+                  return roster && u.user_id === roster.owner_id;
+                });
+                const name = (user && user.display_name) || "Team " + id;
+                const starters = (roster && roster.starters) || [];
+
+                const playerList = starters
+                  .map(function (pid) {
+                    const key = String(pid);
+                    const meta = playersMap[key] || {};
+                    const displayName =
+                      meta.full_name ||
+                      (meta.first_name && meta.last_name
+                        ? meta.first_name + " " + meta.last_name
+                        : key);
+                    const pos = meta.pos || meta.position || "";
+                    const team = meta.team || "";
+
+                    return (
+                      '<div class="roster-player">' +
+                      '<span class="player-pos">' +
+                      (pos || "") +
+                      "</span>" +
+                      '<span class="player-name">' +
+                      displayName +
+                      "</span>" +
+                      '<span class="player-team">' +
+                      (team || "") +
+                      "</span>" +
+                      "</div>"
+                    );
+                  })
+                  .join("");
+
+                return (
+                  '<div class="roster-card">' +
+                  '<div class="roster-header">' +
+                  "<strong>" +
+                  name +
+                  "</strong>" +
+                  '<span class="small">Roster ID: ' +
+                  id +
+                  "</span>" +
+                  "</div>" +
+                  (playerList || "<p class='small'>No starters listed</p>") +
+                  "</div>"
+                );
+              })
+              .join("");
+
+            rosterContainer.innerHTML = allCards;
+          }
+
+        }
+      }, 500);
+    });
+  </script>
+</body>
+</html>
+
+=== END FILE: index.html ===
+
+=== START FILE: league_config.js ===
+// league_config.js
+// -----------------------------------------------------------------------------
+// Static configuration for your Sleeper league frontend.
+// This DOES NOT hardcode team names or seeds – those come from Sleeper.
+//
+// Other scripts will:
+//   - Read LEAGUE_ID to know which league to query
+//   - Use SEMIFINAL_WEEK / CHAMPIONSHIP_WEEK to map bracket rounds to weeks
+//   - Read ui.* for small front-end preferences
+// -----------------------------------------------------------------------------
+
+(function () {
+    "use strict";
+  
+    const LEAGUE_CONFIG = {
+      // Your Sleeper league ID
+      LEAGUE_ID: "1180559121900638208",
+  
+      // Postseason structure for this specific season
+      SEMIFINAL_WEEK: 16,
+      CHAMPIONSHIP_WEEK: 17,
+  
+      // Optional cache TTL (ms) for Sleeper API responses
+      CACHE_TTL_MS: 2 * 60 * 1000, // 2 minutes
+  
+      // UI preferences for the front-end
+      ui: {
+        darkMode: true,
+        // whether to display IDP/defensive players in shared views
+        showIDP: false,
+        // whether to show bench players in matchup breakdowns by default
+        showBenchByDefault: false,
+        // max number of weeks to offer in a week selector dropdown
+        maxWeeksSelectable: 17,
+      },
+    };
+  
+    // Attach to window so other scripts can access LEAGUE_CONFIG
+    window.LEAGUE_CONFIG = LEAGUE_CONFIG;
+  })();
+  
+=== END FILE: league_config.js ===
+
+=== START FILE: models.js ===
+// models.js
+// -----------------------------------------------------------------------------
+// Data modeling layer for the Sleeper-based playoff hub.
+//
+// Responsibility:
+//   - Take raw Sleeper data (league, users, rosters, matchups, winners bracket)
+//   - Normalize it into clean "teams" and "matchups" objects
+//   - Build a playoff bracket (semifinals/finals) based on seeds + bracket
+//
+// No DOM work here. No projections or jokes here.
+// Other modules (projections.js, newsletter.js, index.html) consume this.
+// -----------------------------------------------------------------------------
+
+(function () {
+    "use strict";
+  
+    // -----------------------
+    // Utility helpers
+    // -----------------------
+  
+    function safeNumber(value, fallback = 0) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    }
+  
+    function clone(obj) {
+      return obj == null ? obj : JSON.parse(JSON.stringify(obj));
+    }
+  
+    // -----------------------
+    // Owners / users
+    // -----------------------
+  
+    function buildOwnerIndex(users) {
+      const index = {};
+      (users || []).forEach((u) => {
+        if (!u || !u.user_id) return;
+        const displayName =
+          (u.metadata && u.metadata.team_name) ||
+          u.display_name ||
+          `Owner ${u.user_id}`;
+  
+        index[String(u.user_id)] = {
+          userId: String(u.user_id),
+          displayName,
+          avatar: u.avatar || null,
+          raw: u,
+        };
+      });
+      return index;
+    }
+  
+    // -----------------------
+    // Teams / rosters
+    // -----------------------
+  
+    function inferTeamName(roster, owner) {
+      const meta = roster && roster.metadata;
+      if (meta && typeof meta.team_name === "string" && meta.team_name.trim()) {
+        return meta.team_name.trim();
+      }
+  
+      if (owner && owner.displayName) {
+        return `${owner.displayName}'s Team`;
+      }
+  
+      return `Roster ${roster && roster.roster_id != null ? roster.roster_id : "?"}`;
+    }
+  
+    /**
+     * Build league "teams" (one per roster) keyed by roster_id.
+     */
+    function buildTeams(league, users, rosters) {
+      const owners = buildOwnerIndex(users);
+      const teamsByRosterId = {};
+  
+      (rosters || []).forEach((r) => {
+        if (!r || typeof r.roster_id === "undefined") return;
+        const rosterId = String(r.roster_id);
+        const owner = owners[String(r.owner_id)] || null;
+        const settings = r.settings || {};
+  
+        const wins = safeNumber(settings.wins);
+        const losses = safeNumber(settings.losses);
+        const ties = safeNumber(settings.ties);
+        const fpts = safeNumber(settings.fpts);
+        const fptsDecimal = safeNumber(settings.fpts_decimal, 0);
+        const pointsFor = fpts + fptsDecimal / 100;
+  
+        const seedRaw = settings.playoff_seed;
+        const seed =
+          typeof seedRaw === "number" && Number.isFinite(seedRaw)
+            ? seedRaw
+            : null;
+  
+        const teamDisplayName = inferTeamName(r, owner);
+  
+        teamsByRosterId[rosterId] = {
+          rosterId,
+          ownerId: owner ? owner.userId : null,
+          ownerDisplayName: owner ? owner.displayName : "Unknown Owner",
+          teamDisplayName,
+          seed,
+          record: {
+            wins,
+            losses,
+            ties,
+            pointsFor,
+            pointsForRaw: { fpts, fptsDecimal },
+          },
+          metadata: {
+            avatar: owner ? owner.avatar : null,
+            leagueSeason: league && league.season ? String(league.season) : null,
+            original: {
+              roster: clone(r),
+              owner: owner ? clone(owner.raw) : null,
+            },
+          },
+        };
+      });
+  
+      return teamsByRosterId;
+    }
+  
+    // -----------------------
+    // Matchups + team-week views
+    // -----------------------
+  
+    function indexMatchupsByRosterId(matchups) {
+      const index = {};
+      (matchups || []).forEach((m) => {
+        if (!m || typeof m.roster_id === "undefined") return;
+        index[String(m.roster_id)] = m;
+      });
+      return index;
+    }
+  
+    function buildStarterEntries(roster, matchup, playerMap) {
+      const starters =
+        (matchup && Array.isArray(matchup.starters) && matchup.starters.length
+          ? matchup.starters
+          : roster && Array.isArray(roster.starters)
+          ? roster.starters
+          : []) || [];
+  
+      const playersPoints =
+        (matchup && matchup.players_points) ||
+        (matchup && matchup.custom_points) ||
+        {};
+  
+      return starters.map((playerId, idx) => {
+        const pid = String(playerId);
+        const meta =
+          (playerMap && playerMap[pid]) ||
+          (window.__SLEEPER_PLAYER_MAP__ && window.__SLEEPER_PLAYER_MAP__[pid]) ||
+          null;
+        const fantasyPoints = safeNumber(playersPoints[pid], 0);
+  
+        return {
+          playerId: pid,
+          displayName:
+            meta && meta.full_name
+              ? meta.full_name
+              : pid,
+          position: meta && (meta.position || meta.pos) ? (meta.position || meta.pos) : null,
+          nflTeam: meta && meta.team ? meta.team : null,
+          slotIndex: idx,
+          fantasyPoints,
+        };
+      });
+    }
+  
+    /**
+     * Build a "team in a specific week" view, combining roster + matchup.
+     */
+    function buildTeamWeekView({
+      teamsByRosterId,
+      rosters,
+      matchupsByRosterId,
+      rosterId,
+      week,
+      playerMap,
+    }) {
+      const rid = String(rosterId);
+      const baseTeam = teamsByRosterId[rid];
+      if (!baseTeam) return null;
+  
+      const matchup = matchupsByRosterId[rid] || null;
+      const roster =
+        (rosters || []).find((r) => String(r.roster_id) === rid) || null;
+  
+      const pointsField =
+        matchup && typeof matchup.points !== "undefined"
+          ? "points"
+          : "custom_points";
+      const score =
+        matchup && typeof matchup[pointsField] !== "undefined"
+          ? safeNumber(matchup[pointsField])
+          : 0;
+  
+      const starters = buildStarterEntries(roster, matchup, playerMap);
+  
+      return {
+        team: baseTeam,
+        rosterId: rid,
+        week,
+        score,
+        starters,
+        rawMatchup: matchup ? clone(matchup) : null,
+      };
+    }
+  
+    // -----------------------
+    // League bootstrap
+    // -----------------------
+  
+    /**
+     * Convert the fetchLeagueBundle() result into a "leagueState" object
+     * that newsletter.js and other modules can use.
+     */
+    function bootstrapFromSleeper(bundle, config) {
+      const cfg = config || window.LEAGUE_CONFIG || {};
+      const league = bundle.league || {};
+      const users = bundle.users || [];
+      const rosters = bundle.rosters || [];
+      const matchupsByWeek = bundle.matchupsByWeek || {};
+      const winnersBracket = bundle.winnersBracket || [];
+  
+      const teamsByRosterId = buildTeams(league, users, rosters);
+  
+      const weeks = {};
+      Object.entries(matchupsByWeek).forEach(([wkStr, arr]) => {
+        const wk = safeNumber(wkStr, null);
+        if (!wk) return;
+        weeks[wk] = {
+          week: wk,
+          matchups: arr,
+          matchupsByRosterId: indexMatchupsByRosterId(arr),
+        };
+      });
+  
+      const playoff = {
+        winnersBracket,
+        semifinalWeek: cfg.SEMIFINAL_WEEK || null,
+        championshipWeek: cfg.CHAMPIONSHIP_WEEK || null,
+      };
+  
+      const leagueState = {
+        league,
+        users,
+        rosters,
+        teamsByRosterId,
+        weeks,
+        playoff,
+      };
+  
+      // Rough currentWeek default: use semifinalWeek if set, else whatever Sleeper has
+      leagueState.currentWeek =
+        playoff.semifinalWeek ||
+        safeNumber(league.settings && league.settings.matchup_week, null);
+  
+      return leagueState;
+    }
+  
+    // -----------------------
+    // Playoff matchups (semis / finals)
+    // -----------------------
+  
+    /**
+     * Build matchup objects for a given week.
+     *
+     * Works for:
+     *   - Playoff weeks with winners bracket (matchup_id often null, use bracket.t1/t2).
+     *   - Regular-season weeks with matchup_id pairs.
+     *
+     * Output shape (for each game):
+     *   {
+     *     id,
+     *     roundLabel,
+     *     bestOf,
+     *     week,
+     *     teamA: <teamWeekView>,
+     *     teamB: <teamWeekView>
+     *   }
+     */
+     function buildPlayoffMatchups(snapshot, config) {
+        config = config || {};
+        const league = snapshot.league || {};
+        const users = snapshot.users || [];
+        const rosters = snapshot.rosters || [];
+        const matchups = snapshot.matchups || [];
+        const winnersBracket =
+          snapshot.winnersBracket ||
+          (window.__LAST_BUNDLE__ && window.__LAST_BUNDLE__.winnersBracket) ||
+          [];
+  
+        const teamsByRosterId = buildTeams(league, users, rosters);
+        const matchupsByRosterId = indexMatchupsByRosterId(matchups);
+        const playerMap =
+          typeof window !== "undefined" && window.__SLEEPER_PLAYER_MAP__
+            ? window.__SLEEPER_PLAYER_MAP__
+            : null;
+  
+        const week =
+          (matchups.length && safeNumber(matchups[0].week, null)) ||
+          (typeof config.SEMIFINAL_WEEK === "number"
+            ? config.SEMIFINAL_WEEK
+            : null);
+  
+        const result = [];
+  
+        // ---------- Case 1: Winners bracket present (playoffs, often matchup_id=null) ----------
+        if (Array.isArray(winnersBracket) && winnersBracket.length) {
+          winnersBracket.forEach(function (g, idx) {
+            if (!g || !g.t1 || !g.t2) return;
+            if (!matchupsByRosterId[g.t1] || !matchupsByRosterId[g.t2]) return;
+  
+            const twA = buildTeamWeekView({
+              teamsByRosterId: teamsByRosterId,
+              rosters: rosters,
+              matchupsByRosterId: matchupsByRosterId,
+              rosterId: g.t1,
+              week: week,
+              playerMap: playerMap,
+            });
+            const twB = buildTeamWeekView({
+              teamsByRosterId: teamsByRosterId,
+              rosters: rosters,
+              matchupsByRosterId: matchupsByRosterId,
+              rosterId: g.t2,
+              week: week,
+              playerMap: playerMap,
+            });
+  
+            if (!twA || !twB) return;
+  
+            var roundLabel = "Playoffs";
+            if (g.r === 3) roundLabel = "Championship";
+            else if (g.r === 2) roundLabel = "Semifinal";
+  
+            result.push({
+              id:
+                "playoff_" +
+                (week != null ? week : "w") +
+                "_m" +
+                (g.m != null ? g.m : idx + 1),
+              roundLabel: roundLabel,
+              bestOf: 1,
+              week: week,
+              teamA: twA,
+              teamB: twB,
+            });
+          });
+  
+          if (result.length) return result;
+        }
+  
+        // ---------- Case 2: Regular-season style (matchup_id groups) ----------
+        const groups = {};
+        (matchups || []).forEach(function (m) {
+          if (!m || m.matchup_id == null) return;
+          const key = String(m.matchup_id);
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(m);
+        });
+  
+        Object.keys(groups).forEach(function (key) {
+          const group = groups[key];
+          if (!group || !group.length) return;
+  
+          const sorted = group.slice().sort(function (a, b) {
+            return safeNumber(a.roster_id) - safeNumber(b.roster_id);
+          });
+  
+          if (sorted.length < 2) return;
+  
+          const first = sorted[0];
+          const second = sorted[1];
+  
+          const twA = buildTeamWeekView({
+            teamsByRosterId: teamsByRosterId,
+            rosters: rosters,
+            matchupsByRosterId: matchupsByRosterId,
+            rosterId: first.roster_id,
+            week: week,
+            playerMap: playerMap,
+          });
+          const twB = buildTeamWeekView({
+            teamsByRosterId: teamsByRosterId,
+            rosters: rosters,
+            matchupsByRosterId: matchupsByRosterId,
+            rosterId: second.roster_id,
+            week: week,
+            playerMap: playerMap,
+          });
+  
+          if (!twA || !twB) return;
+  
+          result.push({
+            id:
+              "week" +
+              (week != null ? week : "w") +
+              "_m" +
+              key,
+            roundLabel: "Week " + (week != null ? week : "?"),
+            bestOf: 1,
+            week: week,
+            teamA: twA,
+            teamB: twB,
+          });
+        });
+  
+        return result;
+      }
+  
+  
+    // -----------------------
+    // Generic “all matchups for a week” helper (snapshot-based)
+    // -----------------------
+  
+    function buildAllMatchupsForWeek(snapshot, playerMap = null) {
+      const league = snapshot.league || {};
+      const rosters = snapshot.rosters || [];
+      const matchups = snapshot.matchups || [];
+      const users = snapshot.users || [];
+  
+      const teamsByRosterId = buildTeams(league, users, rosters);
+      const matchupsByRosterId = indexMatchupsByRosterId(matchups);
+  
+      const groups = {};
+      matchups.forEach((m) => {
+        if (!m || typeof m.matchup_id === "undefined") return;
+        const mId = String(m.matchup_id);
+        if (!groups[mId]) groups[mId] = [];
+        groups[mId].push(m);
+      });
+  
+      const week = safeNumber(matchups[0] && matchups[0].week, null);
+      const result = [];
+  
+      Object.entries(groups).forEach(([matchupId, entries]) => {
+        const sorted = entries.slice().sort(
+          (a, b) => safeNumber(a.roster_id) - safeNumber(b.roster_id)
+        );
+  
+        const teamViews = sorted.map((entry) =>
+          buildTeamWeekView({
+            teamsByRosterId,
+            rosters,
+            matchupsByRosterId,
+            rosterId: entry.roster_id,
+            week,
+            playerMap,
+          })
+        );
+  
+        const isBye = teamViews.length === 1;
+  
+        result.push({
+          id: `week${week}_m${matchupId}`,
+          week,
+          matchupId,
+          teams: teamViews,
+          isBye,
+        });
+      });
+  
+      return result;
+    }
+  
+    // -----------------------
+    // Public API
+    // -----------------------
+  
+    window.LeagueModels = {
+      buildOwnerIndex,
+      buildTeams,
+      buildTeamWeekView,
+      bootstrapFromSleeper,
+      buildPlayoffMatchups,
+      buildAllMatchupsForWeek,
+    };
+  })();
+  
+=== END FILE: models.js ===
+
+=== START FILE: newsletter.js ===
+// newsletter.js
+// -----------------------------------------------------------------------------
+// Wolk Dynasty – Playoff / Matchup Hub bootstrap + newsletter rendering
+//
+// Responsibilities:
+//   - Wire up week selector + refresh button in index.html.
+//   - Fetch league + matchup data from Sleeper via SleeperClient.
+//   - Build a "snapshot" in the shape LeagueModels expects.
+//   - Use LeagueModels.buildPlayoffMatchups + ProjectionEngine to:
+//       • Project each matchup for the chosen week
+//       • Run Monte Carlo sims for win odds
+//       • Approximate championship odds when there are exactly two games
+//   - Render:
+//       • Matchup cards into #matchups-container
+//       • Newsletter-style text into #newsletter-content
+//       • Charts via PlayoffCharts (if Chart.js is available)
+// -----------------------------------------------------------------------------
+
+(function () {
+    "use strict";
+  
+    // -----------------------
+    // Small DOM helpers
+    // -----------------------
+  
+    function $(selector, root) {
+      return (root || document).querySelector(selector);
+    }
+  
+    function formatPercent(p, digits) {
+      digits = typeof digits === "number" ? digits : 1;
+      if (!Number.isFinite(p)) return "–";
+      return (p * 100).toFixed(digits) + "%";
+    }
+  
+    function formatScore(x, digits) {
+      digits = typeof digits === "number" ? digits : 1;
+      if (!Number.isFinite(x)) return "–";
+      return x.toFixed(digits);
+    }
+  
+    function formatRange(low, high, digits) {
+      digits = typeof digits === "number" ? digits : 1;
+      if (!Number.isFinite(low) || !Number.isFinite(high)) return "–";
+      return low.toFixed(digits) + " – " + high.toFixed(digits);
+    }
+  
+    function formatSpread(muA, muB, nameA, nameB) {
+      if (!Number.isFinite(muA) || !Number.isFinite(muB)) return "N/A";
+      const diff = muA - muB;
+      const abs = Math.abs(diff);
+      if (abs < 0.25) return "Pick’em";
+      const fav = diff > 0 ? nameA : nameB;
+      return fav + " -" + abs.toFixed(1);
+    }
+  
+    function formatTotal(muA, muB) {
+      if (!Number.isFinite(muA) || !Number.isFinite(muB)) return "–";
+      return (muA + muB).toFixed(1);
+    }
+  
+    function probabilityToMoneyline(p) {
+      if (!Number.isFinite(p) || p <= 0) return "N/A";
+      if (p >= 0.999) return "-∞";
+      if (p <= 0.5) {
+        const odds = (1 - p) / p;
+        const ml = Math.round(odds * 100);
+        return "+" + ml;
+      }
+      const odds = p / (1 - p);
+      const ml = Math.round(100 / odds);
+      return "-" + ml;
+    }
+  
+    // -----------------------
+    // Matchup transformation
+    // -----------------------
+  
+    /**
+     * semiResults items look like:
+     *   {
+     *     matchup: <projectedMatchup>,  // from ProjectionEngine.projectMatchup
+     *     sim: <simResult>
+     *   }
+     */
+    function buildMatchupModels(results) {
+      return results.map(function (entry, idx) {
+        const projectedMatchup = entry.matchup;
+        const sim = entry.sim;
+  
+        const fallbackId = "m-" + (idx + 1);
+  
+        if (!projectedMatchup || !projectedMatchup.projected) {
+          return {
+            id: fallbackId,
+            roundLabel: "Matchup",
+            bestOf: 1,
+            nameA: "TBD",
+            nameB: "TBD",
+            muA: NaN,
+            muB: NaN,
+            rangeA: { low: NaN, high: NaN },
+            rangeB: { low: NaN, high: NaN },
+            winA: 0.5,
+            winB: 0.5,
+            favoriteName: null,
+            favoriteWinProb: null,
+            underdogName: null,
+            impliedSpread: "N/A",
+            impliedTotal: "–",
+          };
+        }
+  
+        const pm = projectedMatchup.projected;
+        const teamA = pm.teamA;
+        const teamB = pm.teamB;
+  
+        const nameA =
+          teamA && teamA.team && teamA.team.teamDisplayName
+            ? teamA.team.teamDisplayName
+            : "Team A";
+        const nameB =
+          teamB && teamB.team && teamB.team.teamDisplayName
+            ? teamB.team.teamDisplayName
+            : "Team B";
+  
+        const hasProjA = teamA && teamA.projection;
+        const hasProjB = teamB && teamB.projection;
+  
+        const muA = hasProjA ? teamA.projection.totalMean : NaN;
+        const muB = hasProjB ? teamB.projection.totalMean : NaN;
+  
+        const rangeA = {
+          low: hasProjA ? teamA.projection.rangeLow : NaN,
+          high: hasProjA ? teamA.projection.rangeHigh : NaN,
+        };
+        const rangeB = {
+          low: hasProjB ? teamB.projection.rangeLow : NaN,
+          high: hasProjB ? teamB.projection.rangeHigh : NaN,
+        };
+  
+        const winA = sim ? sim.teamAWinPct : 0.5;
+        const winB = sim ? sim.teamBWinPct : 0.5;
+  
+        var favoriteName = null;
+        var favoriteWinProb = null;
+        var underdogName = null;
+  
+        if (winA > winB) {
+          favoriteName = nameA;
+          favoriteWinProb = winA;
+          underdogName = nameB;
+        } else if (winB > winA) {
+          favoriteName = nameB;
+          favoriteWinProb = winB;
+          underdogName = nameA;
+        }
+  
+        return {
+          id: projectedMatchup.id || fallbackId,
+          roundLabel: projectedMatchup.roundLabel || "Matchup",
+          bestOf: projectedMatchup.bestOf || 1,
+          nameA: nameA,
+          nameB: nameB,
+          muA: muA,
+          muB: muB,
+          rangeA: rangeA,
+          rangeB: rangeB,
+          winA: winA,
+          winB: winB,
+          favoriteName: favoriteName,
+          favoriteWinProb: favoriteWinProb,
+          underdogName: underdogName,
+          impliedSpread: formatSpread(muA, muB, nameA, nameB),
+          impliedTotal: formatTotal(muA, muB),
+        };
+      });
+    }
+  
+    function renderMatchupCard(model) {
+      const {
+        nameA,
+        nameB,
+        muA,
+        muB,
+        rangeA,
+        rangeB,
+        winA,
+        winB,
+        impliedSpread,
+        impliedTotal,
+        roundLabel,
+        bestOf,
+        favoriteName,
+      } = model;
+  
+      const tagFavA =
+        favoriteName === nameA
+          ? '<span class="tag tag-favorite">Fav</span>'
+          : '<span class="tag tag-underdog">Dog</span>';
+      const tagFavB =
+        favoriteName === nameB
+          ? '<span class="tag tag-favorite">Fav</span>'
+          : '<span class="tag tag-underdog">Dog</span>';
+  
+      const isFavorite = !!favoriteName;
+      const favClass = isFavorite ? "favorite" : "";
+  
+      return (
+        '<article class="matchup-card ' +
+        favClass +
+        '">' +
+        '<div class="matchup-header">' +
+        '<div class="matchup-teams">' +
+        nameA +
+        " vs " +
+        nameB +
+        "</div>" +
+        '<div class="matchup-meta">' +
+        (roundLabel || "Playoffs") +
+        " • Best-of-" +
+        (bestOf || 1) +
+        "</div>" +
+        "</div>" +
+        '<div class="matchup-scores">' +
+        "<span>" +
+        "<strong>" +
+        formatScore(muA) +
+        "</strong> proj&nbsp;(" +
+        formatRange(rangeA.low, rangeA.high) +
+        ") " +
+        tagFavA +
+        "</span>" +
+        "<span>" +
+        "<strong>" +
+        formatScore(muB) +
+        "</strong> proj&nbsp;(" +
+        formatRange(rangeB.low, rangeB.high) +
+        ") " +
+        tagFavB +
+        "</span>" +
+        "</div>" +
+        '<div class="matchup-meta" style="margin-top: 6px;">' +
+        "Win odds: " +
+        nameA +
+        " " +
+        formatPercent(winA) +
+        ", " +
+        nameB +
+        " " +
+        formatPercent(winB) +
+        "<br/>" +
+        "Line: " +
+        impliedSpread +
+        " • Total: " +
+        impliedTotal +
+        "</div>" +
+        "</article>"
+      );
+    }
+  
+    function buildNewsletterHtml(leagueName, week, matchupModels, champObj) {
+      const lines = [];
+  
+      const titleLine = leagueName
+        ? "Week " + week + " Matchups – " + leagueName
+        : "Week " + week + " Matchups";
+  
+      lines.push("<h3>" + titleLine + "</h3>");
+      lines.push(
+        "<p>Projections for Week " +
+          week +
+          " are in. Here’s how the key matchups stack up once we fold in your projections and a big Monte Carlo sim.</p>"
+      );
+  
+      matchupModels.forEach(function (m) {
+        lines.push("<h3>" + m.nameA + " vs " + m.nameB + "</h3>");
+        lines.push(
+          "<p><strong>Projected score:</strong> " +
+            m.nameA +
+            " " +
+            formatScore(m.muA) +
+            " – " +
+            m.nameB +
+            " " +
+            formatScore(m.muB) +
+            " (total " +
+            m.impliedTotal +
+            ", line " +
+            m.impliedSpread +
+            ").</p>"
+        );
+        lines.push(
+          "<p><strong>Win odds:</strong> " +
+            m.nameA +
+            " " +
+            formatPercent(m.winA) +
+            ", " +
+            m.nameB +
+            " " +
+            formatPercent(m.winB) +
+            ". " +
+            (m.favoriteName
+              ? m.favoriteName +
+                " enter as the statistical favorite, but a couple of boom weeks can flip this fast."
+              : "This projects as a true coin flip – every lineup call matters.") +
+            "</p>"
+        );
+      });
+  
+      if (champObj) {
+        const entries = Object.entries(champObj).sort(function (a, b) {
+          const pa = (a[1] && a[1].titleOdds) || 0;
+          const pb = (b[1] && b[1].titleOdds) || 0;
+          return pb - pa;
+        });
+  
+        lines.push("<h3>Big Picture: Title Odds</h3>");
+        lines.push(
+          "<p>Simulating the bracket forward from these matchups gives the following title odds:</p>"
+        );
+        lines.push('<table class="odds-table"><thead><tr>');
+        lines.push(
+          "<th>Team</th><th>Reach Final</th><th>Win Title</th><th>Implied Line</th>"
+        );
+        lines.push("</tr></thead><tbody>");
+  
+        entries.forEach(function (pair) {
+          var teamName = pair[0];
+          var info = pair[1] || {};
+          var reach =
+            info.path && typeof info.path.reachFinalPct === "number"
+              ? info.path.reachFinalPct
+              : 0;
+          var titleOdds = info.titleOdds || 0;
+          var line = probabilityToMoneyline(titleOdds);
+  
+          lines.push("<tr>");
+          lines.push("<td>" + teamName + "</td>");
+          lines.push("<td>" + formatPercent(reach, 1) + "</td>");
+          lines.push("<td>" + formatPercent(titleOdds, 1) + "</td>");
+          lines.push('<td class="small">' + line + "</td>");
+          lines.push("</tr>");
+        });
+  
+        lines.push("</tbody></table>");
+        lines.push(
+          '<p class="small">Implied lines are computed off the modeled probabilities and are just for fun, not a betting recommendation.</p>'
+        );
+      }
+  
+      return lines.join("\n");
+    }
+  
+    // -----------------------
+    // Core loader
+    // -----------------------
+  
+    async function loadWeek(week) {
+      const matchupsContainer = $("#matchups-container");
+      const newsletterContent = $("#newsletter-content");
+      const subtitle = $("#league-subtitle");
+      const cfg = window.LEAGUE_CONFIG || {};
+  
+      if (matchupsContainer) {
+        matchupsContainer.innerHTML =
+          '<div class="loading">Loading Week ' + week + " matchups…</div>";
+      }
+      if (newsletterContent) {
+        newsletterContent.innerHTML =
+          '<p class="small">Building projections and simulations…</p>';
+      }
+  
+      try {
+        if (!window.SleeperClient) {
+          throw new Error(
+            "SleeperClient is not available. Ensure sleeper_client.js is loaded before newsletter.js."
+          );
+        }
+        if (!window.LeagueModels || !window.ProjectionEngine) {
+          throw new Error(
+            "LeagueModels or ProjectionEngine missing. Check models.js and projections.js are loaded."
+          );
+        }
+  
+        const bundle = await window.SleeperClient.fetchLeagueBundle({
+          weeks: [week],
+        });
+        window.__LAST_BUNDLE__ = bundle;
+  
+        const league = bundle.league || {};
+        const leagueName = league.name || "Sleeper League";
+        const season = league.season || (cfg.season && cfg.season.year) || "";
+  
+        if (subtitle) {
+          subtitle.textContent =
+            leagueName + " • Season " + season + " • Week " + week;
+        }
+  
+        const snapshot = {
+          league: league,
+          users: bundle.users || [],
+          rosters: bundle.rosters || [],
+          matchups:
+            (bundle.matchupsByWeek && bundle.matchupsByWeek[week]) || [],
+          winnersBracket: bundle.winnersBracket || [],
+        };
+  
+        const weekMatchups =
+          window.LeagueModels.buildPlayoffMatchups(snapshot, cfg) || [];
+  
+        if (!weekMatchups.length) {
+          console.warn(
+            "[newsletter.js] No matchups produced by LeagueModels.buildPlayoffMatchups.",
+            { snapshot: snapshot, cfg: cfg }
+          );
+  
+          if (matchupsContainer) {
+            matchupsContainer.innerHTML =
+              '<article class="matchup-card">' +
+              '<div class="matchup-header">' +
+              '<div class="matchup-teams">No matchups detected for Week ' +
+              week +
+              "</div>" +
+              "</div>" +
+              '<div class="matchup-scores">' +
+              "<span class=\"small\">" +
+              "Check your league playoff weeks and confirm Sleeper has generated matchups for this week." +
+              "</span>" +
+              "</div>" +
+              "</article>";
+          }
+  
+          if (newsletterContent) {
+            newsletterContent.innerHTML =
+              "<p>" +
+              "League data loaded, but no clear matchups were detected for Week " +
+              week +
+              ". Once Sleeper generates matchups (or the correct week is configured), " +
+              "this panel will automatically populate with projections and title odds." +
+              "</p>";
+          }
+  
+          if (window.PlayoffCharts) {
+            try {
+              window.PlayoffCharts.renderSemifinalOdds(
+                "semifinal-odds-chart",
+                []
+              );
+              window.PlayoffCharts.renderChampionshipOdds(
+                "title-odds-chart",
+                []
+              );
+            } catch (chartErr) {
+              console.warn("[newsletter.js] Chart clear error:", chartErr);
+            }
+          }
+  
+          return;
+        }
+  
+        const semiResults = weekMatchups.map(function (m) {
+          const projected = window.ProjectionEngine.projectMatchup(m);
+          const sim = window.ProjectionEngine.simulateMatchup(projected, {
+            sims: 20000,
+            trackScores: false,
+          });
+          return { matchup: projected, sim: sim };
+        });
+  
+        window.__SEMI_RESULTS__ = semiResults;
+  
+        var champObj = null;
+        if (semiResults.length === 2) {
+          try {
+            champObj = window.ProjectionEngine.computeChampionshipOdds(
+              semiResults[0],
+              semiResults[1]
+            );
+          } catch (err) {
+            console.warn(
+              "[newsletter.js] Failed to compute championship odds:",
+              err
+            );
+          }
+        }
+  
+        const matchupModels = buildMatchupModels(semiResults);
+  
+        if (matchupsContainer) {
+          matchupsContainer.innerHTML = matchupModels
+            .map(function (m) {
+              return renderMatchupCard(m);
+            })
+            .join("");
+        }
+  
+        if (newsletterContent) {
+          newsletterContent.innerHTML = buildNewsletterHtml(
+            leagueName,
+            week,
+            matchupModels,
+            champObj
+          );
+        }
+  
+        if (window.PlayoffCharts) {
+          const semisForChart = matchupModels.map(function (m) {
+            return {
+              id: m.id,
+              label: m.nameA + " vs " + m.nameB,
+              favoriteName: m.favoriteName || m.nameA,
+              favoriteWinProb:
+                m.favoriteWinProb != null ? m.favoriteWinProb : 0.5,
+              underdogName: m.underdogName || m.nameB,
+            };
+          });
+  
+          try {
+            window.PlayoffCharts.renderSemifinalOdds(
+              "semifinal-odds-chart",
+              semisForChart
+            );
+          } catch (err) {
+            console.warn("[newsletter.js] Semifinal chart render error:", err);
+          }
+  
+          if (champObj) {
+            try {
+              const champArray = Object.entries(champObj).map(function (pair) {
+                return {
+                  teamName: pair[0],
+                  probability: pair[1].titleOdds || 0,
+                };
+              });
+              window.PlayoffCharts.renderChampionshipOdds(
+                "title-odds-chart",
+                champArray
+              );
+            } catch (err) {
+              console.warn(
+                "[newsletter.js] Championship chart render error:",
+                err
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[newsletter.js] loadWeek error:", err);
+        if (matchupsContainer) {
+          matchupsContainer.innerHTML =
+            '<article class="matchup-card">' +
+            '<div class="matchup-header">' +
+            '<div class="matchup-teams">Error loading data from Sleeper</div>' +
+            "</div>" +
+            '<div class="matchup-scores">' +
+            "<span class=\"small\">" +
+            (err.message || "Unknown error") +
+            "</span>" +
+            "</div>" +
+            "</article>";
+        }
+        if (newsletterContent) {
+          newsletterContent.innerHTML =
+            "<p>" +
+            "Something went wrong while pulling projections and simulations. " +
+            "Open the browser console for more detail and confirm your API calls are succeeding." +
+            "</p>";
+        }
+      }
+    }
+  
+    // -----------------------
+    // Bootstrap
+    // -----------------------
+  
+    async function init() {
+      const cfg = window.LEAGUE_CONFIG || {};
+      const uiCfg = cfg.ui || {};
+      const seasonCfg = cfg.season || {};
+  
+      const weekSelect = $("#week-select");
+      const refreshBtn = $("#refresh-btn");
+  
+      const maxWeeks = uiCfg.maxWeeksSelectable || 17;
+      const defaultWeek =
+        cfg.SEMIFINAL_WEEK ||
+        (cfg.playoff && cfg.playoff.semifinalWeek) ||
+        seasonCfg.defaultWeek ||
+        16;
+  
+      if (weekSelect) {
+        weekSelect.innerHTML = "";
+        for (let w = 1; w <= maxWeeks; w++) {
+          const opt = document.createElement("option");
+          opt.value = String(w);
+          opt.textContent = "Week " + w;
+          if (w === Number(defaultWeek)) opt.selected = true;
+          weekSelect.appendChild(opt);
+        }
+  
+        weekSelect.addEventListener("change", function () {
+          const w = parseInt(weekSelect.value, 10);
+          if (Number.isFinite(w)) {
+            loadWeek(w);
+          }
+        });
+      }
+  
+      if (refreshBtn) {
+        refreshBtn.addEventListener("click", function () {
+          const w = weekSelect
+            ? parseInt(weekSelect.value, 10)
+            : Number(defaultWeek);
+          if (Number.isFinite(w)) {
+            loadWeek(w);
+          }
+        });
+      }
+  
+      const initialWeek =
+        (weekSelect && parseInt(weekSelect.value, 10)) || Number(defaultWeek);
+      if (Number.isFinite(initialWeek)) {
+        loadWeek(initialWeek);
+      }
+    }
+  
+    document.addEventListener("DOMContentLoaded", init);
+  
+    window.PlayoffNewsletterApp = {
+      loadWeek: loadWeek,
+      refresh: function () {
+        const weekSelect = $("#week-select");
+        const w = weekSelect
+          ? parseInt(weekSelect.value, 10)
+          : (window.LEAGUE_CONFIG &&
+              (window.LEAGUE_CONFIG.SEMIFINAL_WEEK ||
+                (window.LEAGUE_CONFIG.playoff &&
+                  window.LEAGUE_CONFIG.playoff.semifinalWeek))) ||
+            16;
+        return loadWeek(w);
+      },
+    };
+  })();
+  
+=== END FILE: newsletter.js ===
+
+=== START FILE: projections.js ===
+// projections.js
+// -----------------------------------------------------------------------------
+// Universal Projection + Simulation Layer for the Sleeper Fantasy Hub.
+//
+// Responsibilities:
+//   - Take a team-week view from LeagueModels (or minimal team objects with starters).
+//   - Attach per-player projections or fallback estimates.
+//   - Produce team total mean, variance, and range.
+//   - Run Monte Carlo simulations for win probabilities.
+//   - Compute optional championship odds from two semifinals.
+// -----------------------------------------------------------------------------
+
+(function () {
+    "use strict";
+  
+    if (!window.LeagueModels) {
+      console.error("[projections.js] LeagueModels not found – load models.js first.");
+    }
+  
+    // -----------------------
+    // Configuration
+    // -----------------------
+  
+    const DEFAULT_SD_FRACTION_BY_POS = {
+      QB: 0.35,
+      RB: 0.45,
+      WR: 0.5,
+      TE: 0.55,
+      K: 0.25,
+      DEF: 0.3,
+      LB: 0.4,
+      DL: 0.45,
+      DB: 0.4,
+      DEFAULT: 0.45,
+    };
+  
+    const TEAM_CONFIDENCE_SIGMAS = 1.1;
+    const DEFAULT_SIM_COUNT = 10000;
+  
+    // -----------------------
+    // Projection data access
+    // -----------------------
+  
+    function getProjectionSource() {
+      return window.PROJECTION_DATA && window.PROJECTION_DATA.byPlayerName
+        ? window.PROJECTION_DATA.byPlayerName
+        : {};
+    }
+  
+    function normalizeName(name) {
+      if (!name || typeof name !== "string") return "";
+      return name.trim().toLowerCase().replace(/\s+/g, " ");
+    }
+  
+    function findProjectionForPlayer(playerDisplayName) {
+      const source = getProjectionSource();
+      const target = normalizeName(playerDisplayName);
+      if (!target) return null;
+  
+      // First pass: exact normalized match
+      for (const key in source) {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+        if (normalizeName(key) === target) return source[key];
+      }
+  
+      // Second pass: strip common suffixes
+      const stripped = target.replace(/\b(jr\.?|sr\.?|ii|iii|iv|v)\b/gi, "").trim();
+      if (!stripped) return null;
+  
+      for (const key in source) {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+        const norm = normalizeName(key)
+          .replace(/\b(jr\.?|sr\.?|ii|iii|iv|v)\b/gi, "")
+          .trim();
+        if (norm === stripped) return source[key];
+      }
+  
+      return null;
+    }
+  
+    // -----------------------
+    // Player-level projections
+    // -----------------------
+  
+    function estimateSdFromRange(mean, floor, ceiling) {
+      if (!Number.isFinite(mean)) return null;
+      const f = Number.isFinite(floor) ? floor : null;
+      const c = Number.isFinite(ceiling) ? ceiling : null;
+  
+      if (f != null && c != null) {
+        const span = Math.max(Math.abs(mean - f), Math.abs(c - mean));
+        if (span > 0) return span / 2;
+      }
+      if (f != null) {
+        const span = mean - f;
+        if (span > 0) return span / 2;
+      }
+      if (c != null) {
+        const span = c - mean;
+        if (span > 0) return span / 2;
+      }
+      return null;
+    }
+  
+    function estimateSdFallback(mean, position) {
+      if (!Number.isFinite(mean)) return 0;
+      const key =
+        position && DEFAULT_SD_FRACTION_BY_POS[position]
+          ? position
+          : "DEFAULT";
+      const frac =
+        DEFAULT_SD_FRACTION_BY_POS[key] || DEFAULT_SD_FRACTION_BY_POS.DEFAULT;
+      return mean * frac;
+    }
+  // Add near the top of projections.js, next to DEFAULT_SD_FRACTION_BY_POS:
+  const DEFAULT_BASELINE_MEAN_BY_POS = {
+    QB: 18,
+    RB: 14,
+    WR: 13,
+    TE: 9,
+    K: 8,
+    DEF: 7,
+    LB: 10,
+    DL: 9,
+    DB: 9,
+    DEFAULT: 10,
+  };
+
+  function buildPlayerProjection(starterEntry) {
+    const name = starterEntry.displayName || starterEntry.playerId;
+    const pos = starterEntry.position || starterEntry.pos || null;
+    const projRow = findProjectionForPlayer(name);
+
+    let mean;
+    let floor;
+    let ceiling;
+    let source;
+
+    if (projRow && Number.isFinite(Number(projRow.proj))) {
+      // --- Real projection row available ---
+      mean = Number(projRow.proj);
+      floor = Number.isFinite(Number(projRow.floor))
+        ? Number(projRow.floor)
+        : null;
+      ceiling = Number.isFinite(Number(projRow.ceiling))
+        ? Number(projRow.ceiling)
+        : null;
+      source = "external";
+    } else {
+      // --- Heuristic fallback ---
+      const fp = Number.isFinite(starterEntry.fantasyPoints)
+        ? starterEntry.fantasyPoints
+        : NaN;
+
+      const baseByPos =
+        (pos && DEFAULT_BASELINE_MEAN_BY_POS[pos]) ||
+        DEFAULT_BASELINE_MEAN_BY_POS.DEFAULT;
+
+      // If we actually have a non-zero recent score, use that.
+      // Otherwise, fall back to a positional baseline so future weeks aren’t 0.
+      const lastScore = fp > 0 ? fp : baseByPos;
+
+      mean = lastScore;
+      floor = null;
+      ceiling = null;
+      source = "heuristic";
+    }
+
+    let sd = estimateSdFromRange(mean, floor, ceiling);
+    if (!Number.isFinite(sd) || sd <= 0) {
+      sd = estimateSdFallback(mean, pos);
+    }
+
+    const minSd = mean * 0.15;
+    const maxSd = mean * 1.2;
+    if (sd < minSd) sd = minSd;
+    if (sd > maxSd) sd = maxSd;
+
+    return {
+      mean,
+      sd,
+      floor: floor != null ? floor : Math.max(0, mean - 3 * sd),
+      ceiling: ceiling != null ? ceiling : mean + 3 * sd,
+      source,
+      meta: {
+        position: pos,
+        nflTeam: starterEntry.nflTeam || starterEntry.team || null,
+        rawProjectionRow: projRow || null,
+      },
+    };
+  }
+
+  
+    // -----------------------
+    // Team-level projections
+    // -----------------------
+  
+    function projectTeam(teamWeekView) {
+      if (!teamWeekView || !Array.isArray(teamWeekView.starters)) {
+        return Object.assign({}, teamWeekView, { projection: null });
+      }
+  
+      const projectedPlayers = teamWeekView.starters.map(function (starter) {
+        const proj = buildPlayerProjection(starter);
+        return Object.assign({}, starter, { projection: proj });
+      });
+  
+      let totalMean = 0;
+      let totalVar = 0;
+  
+      projectedPlayers.forEach(function (p) {
+        const m = p.projection.mean;
+        const sd = p.projection.sd;
+        if (!Number.isFinite(m) || !Number.isFinite(sd)) return;
+        totalMean += m;
+        totalVar += sd * sd;
+      });
+  
+      const totalSd = Math.sqrt(totalVar);
+      const rangeLow = Math.max(0, totalMean - TEAM_CONFIDENCE_SIGMAS * totalSd);
+      const rangeHigh = totalMean + TEAM_CONFIDENCE_SIGMAS * totalSd;
+  
+      return Object.assign({}, teamWeekView, {
+        projection: {
+          players: projectedPlayers,
+          totalMean: totalMean,
+          totalVariance: totalVar,
+          totalSd: totalSd,
+          rangeLow: rangeLow,
+          rangeHigh: rangeHigh,
+        },
+      });
+    }
+  
+    /**
+     * Project both teams in a matchup:
+     *   - Playoff matchup from buildPlayoffMatchups: { teamA, teamB }
+     *   - Generic weekly matchup: { teams: [a, b] }
+     */
+    function projectMatchup(matchup) {
+      if (!matchup) return null;
+  
+      var teamA =
+        matchup.teamA ||
+        matchup.highSeedTeam ||
+        (matchup.teams && matchup.teams[0]) ||
+        null;
+      var teamB =
+        matchup.teamB ||
+        matchup.lowSeedTeam ||
+        (matchup.teams && matchup.teams[1]) ||
+        null;
+  
+      if (!teamA || !teamB) {
+        return Object.assign({}, matchup, { projected: null });
+      }
+  
+      const projA = projectTeam(teamA);
+      const projB = projectTeam(teamB);
+  
+      return Object.assign({}, matchup, {
+        projected: {
+          teamA: projA,
+          teamB: projB,
+        },
+        roundLabel: matchup.roundLabel || "Playoff",
+        bestOf: matchup.bestOf || 1,
+      });
+    }
+  
+    // -----------------------
+    // Monte Carlo Simulation
+    // -----------------------
+  
+    function randn() {
+      var u = 0;
+      var v = 0;
+      while (u === 0) u = Math.random();
+      while (v === 0) v = Math.random();
+      return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+  
+    function sampleFantasyScore(mean, sd) {
+      if (!Number.isFinite(mean)) return 0;
+      if (!Number.isFinite(sd) || sd <= 0) return Math.max(0, mean);
+      const sample = mean + sd * randn();
+      return sample < 0 ? 0 : sample;
+    }
+  
+    function simulateMatchup(projectedMatchup, options) {
+      options = options || {};
+      if (!projectedMatchup || !projectedMatchup.projected) {
+        return null;
+      }
+  
+      const teams = projectedMatchup.projected;
+      const teamA = teams.teamA;
+      const teamB = teams.teamB;
+  
+      if (!teamA || !teamB || !teamA.projection || !teamB.projection) {
+        return null;
+      }
+  
+      const playersA = teamA.projection.players || [];
+      const playersB = teamB.projection.players || [];
+  
+      const sims = options.sims || DEFAULT_SIM_COUNT;
+      const trackScores = !!options.trackScores;
+  
+      let winsA = 0;
+      let winsB = 0;
+      let ties = 0;
+  
+      let sumA = 0;
+      let sumB = 0;
+      let sumSqA = 0;
+      let sumSqB = 0;
+  
+      const scoresA = trackScores ? new Float32Array(sims) : null;
+      const scoresB = trackScores ? new Float32Array(sims) : null;
+  
+      for (let i = 0; i < sims; i++) {
+        let scoreA = 0;
+        let scoreB = 0;
+  
+        playersA.forEach(function (p) {
+          scoreA += sampleFantasyScore(p.projection.mean, p.projection.sd);
+        });
+        playersB.forEach(function (p) {
+          scoreB += sampleFantasyScore(p.projection.mean, p.projection.sd);
+        });
+  
+        if (trackScores) {
+          scoresA[i] = scoreA;
+          scoresB[i] = scoreB;
+        }
+  
+        sumA += scoreA;
+        sumB += scoreB;
+        sumSqA += scoreA * scoreA;
+        sumSqB += scoreB * scoreB;
+  
+        if (scoreA > scoreB) winsA++;
+        else if (scoreB > scoreA) winsB++;
+        else ties++;
+      }
+  
+      const n = sims;
+      const meanA = sumA / n;
+      const meanB = sumB / n;
+      const varA = sumSqA / n - meanA * meanA;
+      const varB = sumSqB / n - meanB * meanB;
+  
+      return {
+        teamAWinPct: winsA / n,
+        teamBWinPct: winsB / n,
+        tiePct: ties / n,
+        sims: {
+          teamA: {
+            scores: scoresA,
+            mean: meanA,
+            sd: Math.sqrt(Math.max(varA, 0)),
+          },
+          teamB: {
+            scores: scoresB,
+            mean: meanB,
+            sd: Math.sqrt(Math.max(varB, 0)),
+          },
+        },
+      };
+    }
+  
+    // -----------------------
+    // Championship odds helper
+    // -----------------------
+  
+    // Approximate standard normal CDF (Abramowitz & Stegun 7.1.26)
+    function normalCdf(x) {
+      var t = 1 / (1 + 0.2316419 * Math.abs(x));
+      var d = 0.3989423 * Math.exp(-0.5 * x * x);
+      var prob =
+        d *
+        t *
+        (0.3193815 +
+          t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+      if (x > 0) prob = 1 - prob;
+      return prob;
+    }
+  
+    /**
+     * Given two semifinal result objects:
+     *   semi = { matchup: <projectedMatchup>, sim: <simResult> }
+     *
+     * Compute approximate championship odds for all four teams.
+     */
+    function computeChampionshipOdds(semi1, semi2) {
+      if (!semi1 || !semi2) return null;
+  
+      const m1 = semi1.matchup;
+      const m2 = semi2.matchup;
+      const s1 = semi1.sim;
+      const s2 = semi2.sim;
+  
+      if (!m1 || !m2 || !m1.projected || !m2.projected || !s1 || !s2) {
+        return null;
+      }
+  
+      const a = m1.projected.teamA;
+      const b = m1.projected.teamB;
+      const c = m2.projected.teamA;
+      const d = m2.projected.teamB;
+  
+      const nameA = a.team.teamDisplayName;
+      const nameB = b.team.teamDisplayName;
+      const nameC = c.team.teamDisplayName;
+      const nameD = d.team.teamDisplayName;
+  
+      const muA = a.projection.totalMean;
+      const muB = b.projection.totalMean;
+      const muC = c.projection.totalMean;
+      const muD = d.projection.totalMean;
+  
+      const sdA = a.projection.totalSd;
+      const sdB = b.projection.totalSd;
+      const sdC = c.projection.totalSd;
+      const sdD = d.projection.totalSd;
+  
+      const pA_semis = s1.teamAWinPct;
+      const pB_semis = s1.teamBWinPct;
+      const pC_semis = s2.teamAWinPct;
+      const pD_semis = s2.teamBWinPct;
+  
+      function finalsWinProb(muX, sdX, muY, sdY) {
+        const varDiff = sdX * sdX + sdY * sdY || 1;
+        const z = (muX - muY) / Math.sqrt(varDiff);
+        return normalCdf(z);
+      }
+  
+      const pA_title =
+        pA_semis *
+        (pC_semis * finalsWinProb(muA, sdA, muC, sdC) +
+          pD_semis * finalsWinProb(muA, sdA, muD, sdD));
+  
+      const pB_title =
+        pB_semis *
+        (pC_semis * finalsWinProb(muB, sdB, muC, sdC) +
+          pD_semis * finalsWinProb(muB, sdB, muD, sdD));
+  
+      const pC_title =
+        pC_semis *
+        (pA_semis * finalsWinProb(muC, sdC, muA, sdA) +
+          pB_semis * finalsWinProb(muC, sdC, muB, sdB));
+  
+      const pD_title =
+        pD_semis *
+        (pA_semis * finalsWinProb(muD, sdD, muA, sdA) +
+          pB_semis * finalsWinProb(muD, sdD, muB, sdB));
+  
+      return {
+        [nameA]: {
+          titleOdds: pA_title,
+          path: { reachFinalPct: pA_semis },
+        },
+        [nameB]: {
+          titleOdds: pB_title,
+          path: { reachFinalPct: pB_semis },
+        },
+        [nameC]: {
+          titleOdds: pC_title,
+          path: { reachFinalPct: pC_semis },
+        },
+        [nameD]: {
+          titleOdds: pD_title,
+          path: { reachFinalPct: pD_semis },
+        },
+      };
+    }
+  
+    // -----------------------
+    // Public API
+    // -----------------------
+  
+    window.ProjectionEngine = {
+      buildPlayerProjection,
+      projectTeam,
+      projectMatchup,
+      simulateMatchup,
+      computeChampionshipOdds,
+    };
+  })();
+  
+=== END FILE: projections.js ===
+
+=== START FILE: sleeper_client.js ===
+// sleeper_client.js
+// -----------------------------------------------------------------------------
+// Thin browser client for the Sleeper Fantasy Football API.
+//
+// Goals:
+//   - Abstract all raw HTTP calls into a single place.
+//   - Provide simple helpers for:
+//       • League metadata
+//       • Users (owners)
+//       • Rosters
+//       • Weekly matchups
+//       • Playoff bracket
+//   - Add light caching + basic error handling.
+//   - Stay framework-free and browser-only (no Node, no bundler).
+//
+// This file does NOT impose any opinionated shape beyond some light
+// normalization. Higher-level transformation into "TeamWeekView" etc.
+// is done in models.js / newsletter.js.
+// -----------------------------------------------------------------------------
+
+(function () {
+    "use strict";
+  
+    const BASE_URL = "https://api.sleeper.app/v1";
+  
+    // Fallback config if league_config.js is missing
+    const DEFAULT_LEAGUE_CONFIG = {
+      LEAGUE_ID: null,
+      CURRENT_SEASON: null,
+      SEMIFINAL_WEEK: null,
+      CHAMPIONSHIP_WEEK: null,
+      CACHE_TTL_MS: 60 * 1000, // 1 minute default
+    };
+  
+    const CONFIG = (window.LEAGUE_CONFIG
+      ? Object.assign({}, DEFAULT_LEAGUE_CONFIG, window.LEAGUE_CONFIG)
+      : DEFAULT_LEAGUE_CONFIG
+    );
+  
+    // ---------------
+    // Helpers
+    // ---------------
+  
+    function assertLeagueId() {
+      if (!CONFIG.LEAGUE_ID) {
+        throw new Error(
+          "[SleeperClient] LEAGUE_ID is not configured. Set window.LEAGUE_CONFIG.LEAGUE_ID first."
+        );
+      }
+      return CONFIG.LEAGUE_ID;
+    }
+  
+    function buildUrl(path) {
+      if (!path.startsWith("/")) path = "/" + path;
+      return BASE_URL + path;
+    }
+  
+    async function fetchJson(path) {
+      const url = buildUrl(path);
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      if (!res.ok) {
+        const bodyText = await res.text().catch(() => "");
+        throw new Error(
+          `[SleeperClient] HTTP ${res.status} for ${url} – ${
+            bodyText || "No body"
+          }`
+        );
+      }
+      return res.json();
+    }
+  
+    // Basic localStorage cache wrapper
+    function getCache(key) {
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return null;
+  
+        const now = Date.now();
+        const ttl = CONFIG.CACHE_TTL_MS || 60_000;
+        if (typeof parsed.ts !== "number" || now - parsed.ts > ttl) {
+          return null;
+        }
+        return parsed.data;
+      } catch {
+        return null;
+      }
+    }
+  
+    function setCache(key, data) {
+      try {
+        const payload = JSON.stringify({ ts: Date.now(), data });
+        window.localStorage.setItem(key, payload);
+      } catch {
+        // Ignore cache errors (quota, unsupported, etc.)
+      }
+    }
+  
+    function cacheKey(...parts) {
+      return ["sleeper_cache", CONFIG.LEAGUE_ID || "no_league", ...parts].join(
+        "__"
+      );
+    }
+  
+    // ---------------
+    // Core API calls
+    // ---------------
+  
+    async function getLeague(leagueIdOverride) {
+      const leagueId = leagueIdOverride || assertLeagueId();
+      const key = cacheKey("league");
+      const cached = getCache(key);
+      if (cached) return cached;
+  
+      const data = await fetchJson(`/league/${leagueId}`);
+      setCache(key, data);
+      return data;
+    }
+  
+    async function getLeagueUsers(leagueIdOverride) {
+      const leagueId = leagueIdOverride || assertLeagueId();
+      const key = cacheKey("users");
+      const cached = getCache(key);
+      if (cached) return cached;
+  
+      const data = await fetchJson(`/league/${leagueId}/users`);
+      setCache(key, data);
+      return data;
+    }
+  
+    async function getLeagueRosters(leagueIdOverride) {
+      const leagueId = leagueIdOverride || assertLeagueId();
+      const key = cacheKey("rosters");
+      const cached = getCache(key);
+      if (cached) return cached;
+  
+      const data = await fetchJson(`/league/${leagueId}/rosters`);
+      setCache(key, data);
+      return data;
+    }
+  
+    async function getMatchupsForWeek(week, leagueIdOverride) {
+      const leagueId = leagueIdOverride || assertLeagueId();
+      if (!Number.isFinite(Number(week))) {
+        throw new Error(`[SleeperClient] Invalid week: ${week}`);
+      }
+      const wk = Number(week);
+      const key = cacheKey("matchups", wk);
+      const cached = getCache(key);
+      if (cached) return cached;
+  
+      const data = await fetchJson(`/league/${leagueId}/matchups/${wk}`);
+      setCache(key, data);
+      return data;
+    }
+  
+    async function getPlayoffBracket(leagueIdOverride) {
+      const leagueId = leagueIdOverride || assertLeagueId();
+      const key = cacheKey("winners_bracket");
+      const cached = getCache(key);
+      if (cached) return cached;
+  
+      const data = await fetchJson(`/league/${leagueId}/winners_bracket`);
+      setCache(key, data);
+      return data;
+    }
+  
+    // Optional: losers bracket if you care later
+    async function getLosersBracket(leagueIdOverride) {
+      const leagueId = leagueIdOverride || assertLeagueId();
+      const key = cacheKey("losers_bracket");
+      const cached = getCache(key);
+      if (cached) return cached;
+  
+      const data = await fetchJson(`/league/${leagueId}/losers_bracket`);
+      setCache(key, data);
+      return data;
+    }
+  
+    // ---------------
+    // Higher-level bundle helpers
+    // ---------------
+  
+    /**
+     * Fetch all core league data needed for the newsletter:
+     *
+     *   - league
+     *   - users
+     *   - rosters
+     *   - matchups for specific weeks
+     *   - winners bracket
+     *
+     * Returns an object with all the raw pieces, ready to be fed into LeagueModels.
+     */
+    async function fetchLeagueBundle(options = {}) {
+      const leagueId = options.leagueId || CONFIG.LEAGUE_ID || assertLeagueId();
+  
+      const weeks = Array.isArray(options.weeks)
+        ? options.weeks
+        : [CONFIG.SEMIFINAL_WEEK, CONFIG.CHAMPIONSHIP_WEEK].filter(Boolean);
+  
+      const uniqueWeeks = [
+        ...new Set(
+          weeks.filter((w) => Number.isFinite(Number(w)))
+        ),
+      ];
+  
+      const [league, users, rosters] = await Promise.all([
+        getLeague(leagueId),
+        getLeagueUsers(leagueId),
+        getLeagueRosters(leagueId),
+      ]);
+  
+      const matchupsByWeek = {};
+      for (const wk of uniqueWeeks) {
+        matchupsByWeek[wk] = await getMatchupsForWeek(wk, leagueId);
+      }
+  
+      let winnersBracket = null;
+      try {
+        winnersBracket = await getPlayoffBracket(leagueId);
+      } catch (err) {
+        console.warn("[SleeperClient] Failed to fetch winners bracket:", err);
+      }
+  
+      const bundle = {
+        league,
+        users,
+        rosters,
+        matchupsByWeek,
+        winnersBracket,
+      };
+  
+      // Expose for debugging / other modules
+      window.__LAST_BUNDLE__ = bundle;
+      return bundle;
+    }
+  
+    /**
+     * Convenience: "snapshot" for a single week, same shape you logged earlier:
+     *   { league, users, rosters, matchups, winnersBracket }
+     */
+    async function getLeagueSnapshot(week, leagueIdOverride) {
+      const wk = Number(week);
+      if (!Number.isFinite(wk)) {
+        throw new Error(`[SleeperClient] Invalid week for snapshot: ${week}`);
+      }
+  
+      const bundle = await fetchLeagueBundle({
+        leagueId: leagueIdOverride,
+        weeks: [wk],
+      });
+  
+      const snapshot = {
+        league: bundle.league,
+        users: bundle.users,
+        rosters: bundle.rosters,
+        matchups: bundle.matchupsByWeek[wk] || [],
+        winnersBracket: bundle.winnersBracket || [],
+        week: wk,
+      };
+  
+      window.__LAST_SNAPSHOT__ = snapshot;
+      return snapshot;
+    }
+  
+    // ---------------
+    // Minimal normalization helpers
+    // ---------------
+  
+    function buildUserMap(users) {
+      const map = {};
+      (users || []).forEach((u) => {
+        if (!u || !u.user_id) return;
+        map[u.user_id] = u;
+      });
+      return map;
+    }
+  
+    function findOwnerForRoster(roster, users) {
+      if (!roster || !Array.isArray(users)) return null;
+      const ownerId = roster.owner_id;
+      return users.find((u) => u.user_id === ownerId) || null;
+    }
+  
+    // ---------------
+    // Attach to window
+    // ---------------
+  
+    window.SleeperClient = {
+      // Raw data fetchers
+      getLeague,
+      getLeagueUsers,
+      getLeagueRosters,
+      getMatchupsForWeek,
+      getPlayoffBracket,
+      getLosersBracket,
+  
+      // Bundled fetch
+      fetchLeagueBundle,
+      getLeagueSnapshot,
+  
+      // Small helpers
+      buildUserMap,
+      findOwnerForRoster,
+    };
+  })();
+  
+=== END FILE: sleeper_client.js ===
+

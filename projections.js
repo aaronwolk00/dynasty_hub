@@ -1,46 +1,60 @@
 // projections.js
 // -----------------------------------------------------------------------------
-// Universal Projection + Simulation Layer for the Sleeper Fantasy Hub.
+// Projection + simulation layer for the Sleeper playoff hub.
 //
 // Responsibilities:
-//   - Take a team-week view from LeagueModels (or minimal team objects with starters).
-//   - Attach per-player projections or fallback estimates.
-//   - Produce team total mean, variance, and range.
-//   - Run Monte Carlo simulations for win probabilities.
-//   - Compute optional championship odds from two semifinals.
-// -----------------------------------------------------------------------------
+//
+//   - Take a "team-week view" from LeagueModels and attach:
+//       • Per-player mean projection
+//       • Per-player standard deviation
+//       • Team total mean and variance
+//       • A "confident scoring range" (low / high)
+//   - Run Monte Carlo simulations of matchups using those player distributions
+//     to estimate win probabilities and score distributions.
+//   - Approximate championship odds from two semifinals.
+//
+// Design goals:
+//
+//   - Reusable across seasons and league structures.
+//   - Decoupled from the DOM – purely data in, data out.
+//   - Works even if only partial projection data is provided.
+// ----------------------------------------------------------------------------- 
 
 (function () {
     "use strict";
   
     if (!window.LeagueModels) {
-      console.error("[projections.js] LeagueModels not found – load models.js first.");
+      console.error(
+        "[projections.js] LeagueModels is not defined. Make sure models.js is loaded first."
+      );
     }
   
     // -----------------------
     // Configuration
     // -----------------------
   
-    const DEFAULT_SD_FRACTION_BY_POS = {
+    var DEFAULT_SD_FRACTION_BY_POS = {
       QB: 0.35,
       RB: 0.45,
       WR: 0.5,
       TE: 0.55,
       K: 0.25,
       DEF: 0.3,
+      // IDP / others
       LB: 0.4,
       DL: 0.45,
       DB: 0.4,
-      DEFAULT: 0.45,
+      DEFAULT: 0.45
     };
   
-    const TEAM_CONFIDENCE_SIGMAS = 1.1;
-    const DEFAULT_SIM_COUNT = 10000;
+    var TEAM_CONFIDENCE_SIGMAS = 1.1;
+    var DEFAULT_SIM_COUNT = 10000;
   
     // -----------------------
     // Projection data access
     // -----------------------
   
+    // External per-week projections, if provided (e.g. from Supabase or a CSV)
     function getProjectionSource() {
       return window.PROJECTION_DATA && window.PROJECTION_DATA.byPlayerName
         ? window.PROJECTION_DATA.byPlayerName
@@ -53,26 +67,32 @@
     }
   
     function findProjectionForPlayer(playerDisplayName) {
-      const source = getProjectionSource();
-      const target = normalizeName(playerDisplayName);
+      var source = getProjectionSource();
+      var target = normalizeName(playerDisplayName);
       if (!target) return null;
   
-      // First pass: exact normalized match
-      for (const key in source) {
+      // Exact match
+      for (var key in source) {
         if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
-        if (normalizeName(key) === target) return source[key];
+        if (normalizeName(key) === target) {
+          return source[key];
+        }
       }
   
-      // Second pass: strip common suffixes
-      const stripped = target.replace(/\b(jr\.?|sr\.?|ii|iii|iv|v)\b/gi, "").trim();
+      // Strip suffixes
+      var stripped = target
+        .replace(/\b(jr\.?|sr\.?|ii|iii|iv|v)\b/gi, "")
+        .trim();
       if (!stripped) return null;
   
-      for (const key in source) {
-        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
-        const norm = normalizeName(key)
+      for (var key2 in source) {
+        if (!Object.prototype.hasOwnProperty.call(source, key2)) continue;
+        var norm = normalizeName(key2)
           .replace(/\b(jr\.?|sr\.?|ii|iii|iv|v)\b/gi, "")
           .trim();
-        if (norm === stripped) return source[key];
+        if (norm === stripped) {
+          return source[key2];
+        }
       }
   
       return null;
@@ -82,48 +102,74 @@
     // Player-level projections
     // -----------------------
   
-    function estimateSdFromRange(mean, floor, ceiling) {
+    function estimateSdFromFloorCeiling(mean, floor, ceiling) {
       if (!Number.isFinite(mean)) return null;
-      const f = Number.isFinite(floor) ? floor : null;
-      const c = Number.isFinite(ceiling) ? ceiling : null;
+      var f = Number.isFinite(floor) ? floor : null;
+      var c = Number.isFinite(ceiling) ? ceiling : null;
   
       if (f != null && c != null) {
-        const span = Math.max(Math.abs(mean - f), Math.abs(c - mean));
+        var span = Math.max(Math.abs(mean - f), Math.abs(c - mean));
         if (span > 0) return span / 2;
       }
+  
       if (f != null) {
-        const span = mean - f;
-        if (span > 0) return span / 2;
+        var spanF = mean - f;
+        if (spanF > 0) return spanF / 2;
       }
+  
       if (c != null) {
-        const span = c - mean;
-        if (span > 0) return span / 2;
+        var spanC = c - mean;
+        if (spanC > 0) return spanC / 2;
       }
+  
       return null;
     }
   
     function estimateSdFallback(mean, position) {
       if (!Number.isFinite(mean)) return 0;
-      const key =
+      var posKey =
         position && DEFAULT_SD_FRACTION_BY_POS[position]
           ? position
           : "DEFAULT";
-      const frac =
-        DEFAULT_SD_FRACTION_BY_POS[key] || DEFAULT_SD_FRACTION_BY_POS.DEFAULT;
+      var frac =
+        DEFAULT_SD_FRACTION_BY_POS[posKey] ||
+        DEFAULT_SD_FRACTION_BY_POS.DEFAULT;
       return mean * frac;
     }
   
+    /**
+     * Build a projection object for a player given:
+     *   - The team-week starter entry (from LeagueModels.buildTeamWeekView)
+     *   - Optional external projection data (from PROJECTION_DATA)
+     *
+     * Fallback order (no generic defaults):
+     *   1) External projection row (per-week / Supabase / CSV)
+     *   2) Season average fantasy points for this player
+     *   3) Last known fantasyPoints on the starterEntry (usually last week)
+     */
     function buildPlayerProjection(starterEntry) {
-      const name = starterEntry.displayName || starterEntry.playerId;
-      const pos = starterEntry.position || starterEntry.pos || null;
-      const projRow = findProjectionForPlayer(name);
+      var name = starterEntry.displayName || starterEntry.playerId;
+      var pos = starterEntry.position || null;
+      var projRow = findProjectionForPlayer(name);
   
-      let mean;
-      let floor;
-      let ceiling;
-      let source;
+      // Season-average cache from newsletter.js:
+      // window.__SEASON_AVG_BY_PLAYER_ID__ = { [playerId]: avgPoints }
+      var seasonAvgMap = window.__SEASON_AVG_BY_PLAYER_ID__ || {};
+      var seasonAvg =
+        seasonAvgMap && Object.prototype.hasOwnProperty.call(
+          seasonAvgMap,
+          starterEntry.playerId
+        )
+          ? seasonAvgMap[starterEntry.playerId]
+          : null;
+  
+      var mean;
+      var floor;
+      var ceiling;
+      var source;
   
       if (projRow && Number.isFinite(Number(projRow.proj))) {
+        // 1) Explicit projection
         mean = Number(projRow.proj);
         floor = Number.isFinite(Number(projRow.floor))
           ? Number(projRow.floor)
@@ -132,37 +178,44 @@
           ? Number(projRow.ceiling)
           : null;
         source = "external";
+      } else if (Number.isFinite(seasonAvg)) {
+        // 2) Season average for this player (preferred fallback)
+        mean = seasonAvg;
+        floor = null;
+        ceiling = null;
+        source = "season_avg";
       } else {
-        const lastScore = Number.isFinite(starterEntry.fantasyPoints)
+        // 3) Last known fantasy points as a rough anchor
+        var lastScore = Number.isFinite(starterEntry.fantasyPoints)
           ? starterEntry.fantasyPoints
-          : 10;
+          : 0;
         mean = lastScore;
         floor = null;
         ceiling = null;
         source = "heuristic";
       }
   
-      let sd = estimateSdFromRange(mean, floor, ceiling);
+      var sd = estimateSdFromFloorCeiling(mean, floor, ceiling);
       if (!Number.isFinite(sd) || sd <= 0) {
         sd = estimateSdFallback(mean, pos);
       }
   
-      const minSd = mean * 0.15;
-      const maxSd = mean * 1.2;
+      var minSd = mean * 0.15;
+      var maxSd = mean * 1.2;
       if (sd < minSd) sd = minSd;
       if (sd > maxSd) sd = maxSd;
   
       return {
-        mean,
-        sd,
+        mean: mean,
+        sd: sd,
         floor: floor != null ? floor : Math.max(0, mean - 3 * sd),
         ceiling: ceiling != null ? ceiling : mean + 3 * sd,
-        source,
+        source: source,
         meta: {
           position: pos,
-          nflTeam: starterEntry.nflTeam || starterEntry.team || null,
-          rawProjectionRow: projRow || null,
-        },
+          nflTeam: starterEntry.nflTeam || null,
+          rawProjectionRow: projRow || null
+        }
       };
     }
   
@@ -175,25 +228,28 @@
         return Object.assign({}, teamWeekView, { projection: null });
       }
   
-      const projectedPlayers = teamWeekView.starters.map(function (starter) {
-        const proj = buildPlayerProjection(starter);
+      var projectedPlayers = teamWeekView.starters.map(function (starter) {
+        var proj = buildPlayerProjection(starter);
         return Object.assign({}, starter, { projection: proj });
       });
   
-      let totalMean = 0;
-      let totalVar = 0;
+      var totalMean = 0;
+      var totalVar = 0;
   
       projectedPlayers.forEach(function (p) {
-        const m = p.projection.mean;
-        const sd = p.projection.sd;
+        var m = p.projection.mean;
+        var sd = p.projection.sd;
         if (!Number.isFinite(m) || !Number.isFinite(sd)) return;
         totalMean += m;
         totalVar += sd * sd;
       });
   
-      const totalSd = Math.sqrt(totalVar);
-      const rangeLow = Math.max(0, totalMean - TEAM_CONFIDENCE_SIGMAS * totalSd);
-      const rangeHigh = totalMean + TEAM_CONFIDENCE_SIGMAS * totalSd;
+      var totalSd = Math.sqrt(totalVar);
+      var rangeLow = Math.max(
+        0,
+        totalMean - TEAM_CONFIDENCE_SIGMAS * totalSd
+      );
+      var rangeHigh = totalMean + TEAM_CONFIDENCE_SIGMAS * totalSd;
   
       return Object.assign({}, teamWeekView, {
         projection: {
@@ -202,15 +258,16 @@
           totalVariance: totalVar,
           totalSd: totalSd,
           rangeLow: rangeLow,
-          rangeHigh: rangeHigh,
-        },
+          rangeHigh: rangeHigh
+        }
       });
     }
   
     /**
      * Project both teams in a matchup:
-     *   - Playoff matchup from buildPlayoffMatchups: { teamA, teamB }
      *   - Generic weekly matchup: { teams: [a, b] }
+     *   - Playoff matchup from buildPlayoffMatchups: { teamA, teamB }
+     *   - Older highSeedTeam/lowSeedTeam variants.
      */
     function projectMatchup(matchup) {
       if (!matchup) return null;
@@ -230,16 +287,16 @@
         return Object.assign({}, matchup, { projected: null });
       }
   
-      const projA = projectTeam(teamA);
-      const projB = projectTeam(teamB);
+      var projA = projectTeam(teamA);
+      var projB = projectTeam(teamB);
   
       return Object.assign({}, matchup, {
         projected: {
           teamA: projA,
-          teamB: projB,
+          teamB: projB
         },
-        roundLabel: matchup.roundLabel || "Playoff",
-        bestOf: matchup.bestOf || 1,
+        roundLabel: matchup.roundLabel || matchup.round || "Matchup",
+        bestOf: matchup.bestOf || 1
       });
     }
   
@@ -256,53 +313,58 @@
     }
   
     function sampleFantasyScore(mean, sd) {
-      if (!Number.isFinite(mean)) return 0;
-      if (!Number.isFinite(sd) || sd <= 0) return Math.max(0, mean);
-      const sample = mean + sd * randn();
+      if (sd <= 0) return Math.max(0, mean);
+      var sample = mean + sd * randn();
       return sample < 0 ? 0 : sample;
     }
   
+    /**
+     * Run Monte Carlo sims for a projected matchup.
+     */
     function simulateMatchup(projectedMatchup, options) {
       options = options || {};
       if (!projectedMatchup || !projectedMatchup.projected) {
         return null;
       }
   
-      const teams = projectedMatchup.projected;
-      const teamA = teams.teamA;
-      const teamB = teams.teamB;
-  
+      var teamA = projectedMatchup.projected.teamA;
+      var teamB = projectedMatchup.projected.teamB;
       if (!teamA || !teamB || !teamA.projection || !teamB.projection) {
         return null;
       }
   
-      const playersA = teamA.projection.players || [];
-      const playersB = teamB.projection.players || [];
+      var sims = options.sims || DEFAULT_SIM_COUNT;
+      var trackScores = options.trackScores || false;
   
-      const sims = options.sims || DEFAULT_SIM_COUNT;
-      const trackScores = !!options.trackScores;
+      var playersA = teamA.projection.players;
+      var playersB = teamB.projection.players;
   
-      let winsA = 0;
-      let winsB = 0;
-      let ties = 0;
+      var winsA = 0;
+      var winsB = 0;
+      var ties = 0;
   
-      let sumA = 0;
-      let sumB = 0;
-      let sumSqA = 0;
-      let sumSqB = 0;
+      var sumA = 0;
+      var sumB = 0;
+      var sumSqA = 0;
+      var sumSqB = 0;
   
-      const scoresA = trackScores ? new Float32Array(sims) : null;
-      const scoresB = trackScores ? new Float32Array(sims) : null;
+      var scoresA = trackScores ? new Float32Array(sims) : null;
+      var scoresB = trackScores ? new Float32Array(sims) : null;
   
-      for (let i = 0; i < sims; i++) {
-        let scoreA = 0;
-        let scoreB = 0;
+      for (var i = 0; i < sims; i++) {
+        var scoreA = 0;
+        var scoreB = 0;
   
         playersA.forEach(function (p) {
-          scoreA += sampleFantasyScore(p.projection.mean, p.projection.sd);
+          var m = p.projection.mean;
+          var sd = p.projection.sd;
+          scoreA += sampleFantasyScore(m, sd);
         });
+  
         playersB.forEach(function (p) {
-          scoreB += sampleFantasyScore(p.projection.mean, p.projection.sd);
+          var m = p.projection.mean;
+          var sd = p.projection.sd;
+          scoreB += sampleFantasyScore(m, sd);
         });
   
         if (trackScores) {
@@ -320,11 +382,11 @@
         else ties++;
       }
   
-      const n = sims;
-      const meanA = sumA / n;
-      const meanB = sumB / n;
-      const varA = sumSqA / n - meanA * meanA;
-      const varB = sumSqB / n - meanB * meanB;
+      var n = sims;
+      var meanA = sumA / n;
+      var meanB = sumB / n;
+      var varA = sumSqA / n - meanA * meanA;
+      var varB = sumSqB / n - meanB * meanB;
   
       return {
         teamAWinPct: winsA / n,
@@ -334,14 +396,14 @@
           teamA: {
             scores: scoresA,
             mean: meanA,
-            sd: Math.sqrt(Math.max(varA, 0)),
+            sd: Math.sqrt(Math.max(varA, 0))
           },
           teamB: {
             scores: scoresB,
             mean: meanB,
-            sd: Math.sqrt(Math.max(varB, 0)),
-          },
-        },
+            sd: Math.sqrt(Math.max(varB, 0))
+          }
+        }
       };
     }
   
@@ -349,105 +411,68 @@
     // Championship odds helper
     // -----------------------
   
-    // Approximate standard normal CDF (Abramowitz & Stegun 7.1.26)
-    function normalCdf(x) {
-      var t = 1 / (1 + 0.2316419 * Math.abs(x));
-      var d = 0.3989423 * Math.exp(-0.5 * x * x);
-      var prob =
-        d *
-        t *
-        (0.3193815 +
-          t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
-      if (x > 0) prob = 1 - prob;
-      return prob;
-    }
+    function computeChampionshipOdds(semi1, semi2, finalsMatrix) {
+      if (!semi1 || !semi2 || !finalsMatrix) return null;
   
-    /**
-     * Given two semifinal result objects:
-     *   semi = { matchup: <projectedMatchup>, sim: <simResult> }
-     *
-     * Compute approximate championship odds for all four teams.
-     */
-    function computeChampionshipOdds(semi1, semi2) {
-      if (!semi1 || !semi2) return null;
+      var tA = semi1.projected.teamA.team.teamDisplayName;
+      var tB = semi1.projected.teamB.team.teamDisplayName;
+      var tC = semi2.projected.teamA.team.teamDisplayName;
+      var tD = semi2.projected.teamB.team.teamDisplayName;
   
-      const m1 = semi1.matchup;
-      const m2 = semi2.matchup;
-      const s1 = semi1.sim;
-      const s2 = semi2.sim;
+      var pA_beat_B = semi1.sim.teamAWinPct;
+      var pB_beat_A = semi1.sim.teamBWinPct;
+      var pC_beat_D = semi2.sim.teamAWinPct;
+      var pD_beat_C = semi2.sim.teamBWinPct;
   
-      if (!m1 || !m2 || !m1.projected || !m2.projected || !s1 || !s2) {
-        return null;
+      var pA_to_final = pA_beat_B;
+      var pB_to_final = pB_beat_A;
+      var pC_to_final = pC_beat_D;
+      var pD_to_final = pD_beat_C;
+  
+      function titleProb(teamKey, semiSide) {
+        switch (semiSide) {
+          case "A": {
+            var vsC = (finalsMatrix[tA] && finalsMatrix[tA][tC]) || 0.5;
+            var vsD = (finalsMatrix[tA] && finalsMatrix[tA][tD]) || 0.5;
+            return pA_to_final * (pC_to_final * vsC + pD_to_final * vsD);
+          }
+          case "B": {
+            var vsC2 = (finalsMatrix[tB] && finalsMatrix[tB][tC]) || 0.5;
+            var vsD2 = (finalsMatrix[tB] && finalsMatrix[tB][tD]) || 0.5;
+            return pB_to_final * (pC_to_final * vsC2 + pD_to_final * vsD2);
+          }
+          case "C": {
+            var vsA = (finalsMatrix[tC] && finalsMatrix[tC][tA]) || 0.5;
+            var vsB = (finalsMatrix[tC] && finalsMatrix[tC][tB]) || 0.5;
+            return pC_to_final * (pA_to_final * vsA + pB_to_final * vsB);
+          }
+          case "D": {
+            var vsA2 = (finalsMatrix[tD] && finalsMatrix[tD][tA]) || 0.5;
+            var vsB2 = (finalsMatrix[tD] && finalsMatrix[tD][tB]) || 0.5;
+            return pD_to_final * (pA_to_final * vsA2 + pB_to_final * vsB2);
+          }
+          default:
+            return 0;
+        }
       }
-  
-      const a = m1.projected.teamA;
-      const b = m1.projected.teamB;
-      const c = m2.projected.teamA;
-      const d = m2.projected.teamB;
-  
-      const nameA = a.team.teamDisplayName;
-      const nameB = b.team.teamDisplayName;
-      const nameC = c.team.teamDisplayName;
-      const nameD = d.team.teamDisplayName;
-  
-      const muA = a.projection.totalMean;
-      const muB = b.projection.totalMean;
-      const muC = c.projection.totalMean;
-      const muD = d.projection.totalMean;
-  
-      const sdA = a.projection.totalSd;
-      const sdB = b.projection.totalSd;
-      const sdC = c.projection.totalSd;
-      const sdD = d.projection.totalSd;
-  
-      const pA_semis = s1.teamAWinPct;
-      const pB_semis = s1.teamBWinPct;
-      const pC_semis = s2.teamAWinPct;
-      const pD_semis = s2.teamBWinPct;
-  
-      function finalsWinProb(muX, sdX, muY, sdY) {
-        const varDiff = sdX * sdX + sdY * sdY || 1;
-        const z = (muX - muY) / Math.sqrt(varDiff);
-        return normalCdf(z);
-      }
-  
-      const pA_title =
-        pA_semis *
-        (pC_semis * finalsWinProb(muA, sdA, muC, sdC) +
-          pD_semis * finalsWinProb(muA, sdA, muD, sdD));
-  
-      const pB_title =
-        pB_semis *
-        (pC_semis * finalsWinProb(muB, sdB, muC, sdC) +
-          pD_semis * finalsWinProb(muB, sdB, muD, sdD));
-  
-      const pC_title =
-        pC_semis *
-        (pA_semis * finalsWinProb(muC, sdC, muA, sdA) +
-          pB_semis * finalsWinProb(muC, sdC, muB, sdB));
-  
-      const pD_title =
-        pD_semis *
-        (pA_semis * finalsWinProb(muD, sdD, muA, sdA) +
-          pB_semis * finalsWinProb(muD, sdD, muB, sdB));
   
       return {
-        [nameA]: {
-          titleOdds: pA_title,
-          path: { reachFinalPct: pA_semis },
+        [tA]: {
+          titleOdds: titleProb(tA, "A"),
+          path: { reachFinalPct: pA_to_final }
         },
-        [nameB]: {
-          titleOdds: pB_title,
-          path: { reachFinalPct: pB_semis },
+        [tB]: {
+          titleOdds: titleProb(tB, "B"),
+          path: { reachFinalPct: pB_to_final }
         },
-        [nameC]: {
-          titleOdds: pC_title,
-          path: { reachFinalPct: pC_semis },
+        [tC]: {
+          titleOdds: titleProb(tC, "C"),
+          path: { reachFinalPct: pC_to_final }
         },
-        [nameD]: {
-          titleOdds: pD_title,
-          path: { reachFinalPct: pD_semis },
-        },
+        [tD]: {
+          titleOdds: titleProb(tD, "D"),
+          path: { reachFinalPct: pD_to_final }
+        }
       };
     }
   
@@ -456,11 +481,16 @@
     // -----------------------
   
     window.ProjectionEngine = {
-      buildPlayerProjection,
-      projectTeam,
-      projectMatchup,
-      simulateMatchup,
-      computeChampionshipOdds,
+      // Player/Team projections
+      buildPlayerProjection: buildPlayerProjection,
+      projectTeam: projectTeam,
+      projectMatchup: projectMatchup,
+  
+      // Sims
+      simulateMatchup: simulateMatchup,
+  
+      // Championship odds
+      computeChampionshipOdds: computeChampionshipOdds
     };
   })();
   
