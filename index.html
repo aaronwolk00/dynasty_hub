@@ -388,6 +388,31 @@
   <!-- Vendor: Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+  <!-- Load Sleeper player metadata (maps player_id → name/pos/team) -->
+<script>
+    (async function preloadSleeperPlayers() {
+      try {
+        const res = await fetch("https://api.sleeper.app/v1/players/nfl");
+        const data = await res.json();
+        const map = {};
+        for (const [id, p] of Object.entries(data)) {
+          map[id] = {
+            full_name: p.full_name || p.first_name + " " + p.last_name,
+            pos: p.position,
+            team: p.team,
+            color: p.team_color || "#9ca3af",
+          };
+        }
+        window.__SLEEPER_PLAYER_MAP__ = map;
+        console.log("[player-map] Loaded", Object.keys(map).length, "players");
+      } catch (err) {
+        console.warn("Failed to load Sleeper player map", err);
+        window.__SLEEPER_PLAYER_MAP__ = {};
+      }
+    })();
+</script>
+    
+
   <!-- App scripts -->
   <script src="league_config.js"></script>
   <script src="sleeper_client.js"></script>
@@ -449,35 +474,67 @@
               return;
             }
 
+            const playersMap =
+              (typeof window !== "undefined" && window.__SLEEPER_PLAYER_MAP__) || {};
+
             const allCards = ids
-              .map((id) => {
-                const roster = rosters.find((r) => r.roster_id === id);
-                const user = users.find((u) => u.user_id === roster?.owner_id);
-                const name = user?.display_name || `Team ${id}`;
-                const starters = roster?.starters || [];
+              .map(function (id) {
+                const roster = rosters.find(function (r) {
+                  return r.roster_id === id;
+                });
+                const user = users.find(function (u) {
+                  return roster && u.user_id === roster.owner_id;
+                });
+                const name = (user && user.display_name) || "Team " + id;
+                const starters = (roster && roster.starters) || [];
+
                 const playerList = starters
-                  .map(
-                    (pid) => `
-                    <div class="roster-player">
-                      <span class="player-pos">${pid}</span>
-                      <span class="player-name">${window.__SLEEPER_PLAYER_MAP?.[pid]?.full_name || pid}</span>
-                    </div>`
-                  )
+                  .map(function (pid) {
+                    const key = String(pid);
+                    const meta = playersMap[key] || {};
+                    const displayName =
+                      meta.full_name ||
+                      (meta.first_name && meta.last_name
+                        ? meta.first_name + " " + meta.last_name
+                        : key);
+                    const pos = meta.pos || meta.position || "";
+                    const team = meta.team || "";
+
+                    return (
+                      '<div class="roster-player">' +
+                      '<span class="player-pos">' +
+                      (pos || "") +
+                      "</span>" +
+                      '<span class="player-name">' +
+                      displayName +
+                      "</span>" +
+                      '<span class="player-team">' +
+                      (team || "") +
+                      "</span>" +
+                      "</div>"
+                    );
+                  })
                   .join("");
 
-                return `
-                  <div class="roster-card">
-                    <div class="roster-header">
-                      <strong>${name}</strong>
-                      <span class="small">Roster ID: ${id}</span>
-                    </div>
-                    ${playerList || "<p class='small'>No starters listed</p>"}
-                  </div>`;
+                return (
+                  '<div class="roster-card">' +
+                  '<div class="roster-header">' +
+                  "<strong>" +
+                  name +
+                  "</strong>" +
+                  '<span class="small">Roster ID: ' +
+                  id +
+                  "</span>" +
+                  "</div>" +
+                  (playerList || "<p class='small'>No starters listed</p>") +
+                  "</div>"
+                );
               })
               .join("");
 
             rosterContainer.innerHTML = allCards;
           }
+
         }
       }, 500);
     });

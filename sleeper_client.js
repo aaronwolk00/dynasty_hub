@@ -4,7 +4,7 @@
 //
 // Goals:
 //   - Abstract all raw HTTP calls into a single place.
-//   - Provide simple, well-typed helpers for:
+//   - Provide simple helpers for:
 //       • League metadata
 //       • Users (owners)
 //       • Rosters
@@ -60,13 +60,15 @@
       const res = await fetch(url, {
         method: "GET",
         headers: {
-          "Accept": "application/json",
+          Accept: "application/json",
         },
       });
       if (!res.ok) {
         const bodyText = await res.text().catch(() => "");
         throw new Error(
-          `[SleeperClient] HTTP ${res.status} for ${url} – ${bodyText || "No body"}`
+          `[SleeperClient] HTTP ${res.status} for ${url} – ${
+            bodyText || "No body"
+          }`
         );
       }
       return res.json();
@@ -81,7 +83,8 @@
         if (!parsed || typeof parsed !== "object") return null;
   
         const now = Date.now();
-        if (typeof parsed.ts !== "number" || now - parsed.ts > (CONFIG.CACHE_TTL_MS || 60000)) {
+        const ttl = CONFIG.CACHE_TTL_MS || 60_000;
+        if (typeof parsed.ts !== "number" || now - parsed.ts > ttl) {
           return null;
         }
         return parsed.data;
@@ -100,7 +103,9 @@
     }
   
     function cacheKey(...parts) {
-      return ["sleeper_cache", CONFIG.LEAGUE_ID || "no_league", ...parts].join("__");
+      return ["sleeper_cache", CONFIG.LEAGUE_ID || "no_league", ...parts].join(
+        "__"
+      );
     }
   
     // ---------------
@@ -200,9 +205,11 @@
         ? options.weeks
         : [CONFIG.SEMIFINAL_WEEK, CONFIG.CHAMPIONSHIP_WEEK].filter(Boolean);
   
-      const uniqueWeeks = [...new Set(
+      const uniqueWeeks = [
+        ...new Set(
           weeks.filter((w) => Number.isFinite(Number(w)))
-          )];
+        ),
+      ];
   
       const [league, users, rosters] = await Promise.all([
         getLeague(leagueId),
@@ -222,22 +229,51 @@
         console.warn("[SleeperClient] Failed to fetch winners bracket:", err);
       }
   
-      return {
+      const bundle = {
         league,
         users,
         rosters,
         matchupsByWeek,
         winnersBracket,
       };
+  
+      // Expose for debugging / other modules
+      window.__LAST_BUNDLE__ = bundle;
+      return bundle;
+    }
+  
+    /**
+     * Convenience: "snapshot" for a single week, same shape you logged earlier:
+     *   { league, users, rosters, matchups, winnersBracket }
+     */
+    async function getLeagueSnapshot(week, leagueIdOverride) {
+      const wk = Number(week);
+      if (!Number.isFinite(wk)) {
+        throw new Error(`[SleeperClient] Invalid week for snapshot: ${week}`);
+      }
+  
+      const bundle = await fetchLeagueBundle({
+        leagueId: leagueIdOverride,
+        weeks: [wk],
+      });
+  
+      const snapshot = {
+        league: bundle.league,
+        users: bundle.users,
+        rosters: bundle.rosters,
+        matchups: bundle.matchupsByWeek[wk] || [],
+        winnersBracket: bundle.winnersBracket || [],
+        week: wk,
+      };
+  
+      window.__LAST_SNAPSHOT__ = snapshot;
+      return snapshot;
     }
   
     // ---------------
     // Minimal normalization helpers
     // ---------------
   
-    /**
-     * Get a lookup from user_id -> user object.
-     */
     function buildUserMap(users) {
       const map = {};
       (users || []).forEach((u) => {
@@ -247,10 +283,6 @@
       return map;
     }
   
-    /**
-     * Find the user (owner) who owns a given roster_id.
-     * This is sometimes useful before handing data off to LeagueModels.
-     */
     function findOwnerForRoster(roster, users) {
       if (!roster || !Array.isArray(users)) return null;
       const ownerId = roster.owner_id;
@@ -272,6 +304,7 @@
   
       // Bundled fetch
       fetchLeagueBundle,
+      getLeagueSnapshot,
   
       // Small helpers
       buildUserMap,

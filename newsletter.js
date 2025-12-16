@@ -1,28 +1,19 @@
 // newsletter.js
 // -----------------------------------------------------------------------------
-// Wolk Dynasty – Playoff Hub bootstrap + newsletter rendering
+// Wolk Dynasty – Playoff / Matchup Hub bootstrap + newsletter rendering
 //
 // Responsibilities:
 //   - Wire up week selector + refresh button in index.html.
 //   - Fetch league + matchup data from Sleeper via SleeperClient.
-//   - Build a simple "snapshot" in the shape LeagueModels expects.
+//   - Build a "snapshot" in the shape LeagueModels expects.
 //   - Use LeagueModels.buildPlayoffMatchups + ProjectionEngine to:
-//       • Project each semifinal matchup
+//       • Project each matchup for the chosen week
 //       • Run Monte Carlo sims for win odds
-//       • Approximate championship odds for all four teams
+//       • Approximate championship odds when there are exactly two games
 //   - Render:
 //       • Matchup cards into #matchups-container
 //       • Newsletter-style text into #newsletter-content
 //       • Charts via PlayoffCharts (if Chart.js is available)
-//
-// Assumptions:
-//   - window.LEAGUE_CONFIG is defined (league_config.js).
-//   - window.SleeperClient, window.LeagueModels, window.ProjectionEngine,
-//     and window.PlayoffCharts are loaded before this script.
-//   - index.html has:
-//       #league-subtitle, #week-select, #refresh-btn,
-//       #matchups-container, #newsletter-content,
-//       #semifinal-odds-chart, #title-odds-chart
 // -----------------------------------------------------------------------------
 
 (function () {
@@ -32,23 +23,26 @@
     // Small DOM helpers
     // -----------------------
   
-    function $(selector, root = document) {
-      return root.querySelector(selector);
+    function $(selector, root) {
+      return (root || document).querySelector(selector);
     }
   
-    function formatPercent(p, digits = 1) {
+    function formatPercent(p, digits) {
+      digits = typeof digits === "number" ? digits : 1;
       if (!Number.isFinite(p)) return "–";
-      return `${(p * 100).toFixed(digits)}%`;
+      return (p * 100).toFixed(digits) + "%";
     }
   
-    function formatScore(x, digits = 1) {
+    function formatScore(x, digits) {
+      digits = typeof digits === "number" ? digits : 1;
       if (!Number.isFinite(x)) return "–";
       return x.toFixed(digits);
     }
   
-    function formatRange(low, high, digits = 1) {
+    function formatRange(low, high, digits) {
+      digits = typeof digits === "number" ? digits : 1;
       if (!Number.isFinite(low) || !Number.isFinite(high)) return "–";
-      return `${low.toFixed(digits)} – ${high.toFixed(digits)}`;
+      return low.toFixed(digits) + " – " + high.toFixed(digits);
     }
   
     function formatSpread(muA, muB, nameA, nameB) {
@@ -57,7 +51,7 @@
       const abs = Math.abs(diff);
       if (abs < 0.25) return "Pick’em";
       const fav = diff > 0 ? nameA : nameB;
-      return `${fav} -${abs.toFixed(1)}`;
+      return fav + " -" + abs.toFixed(1);
     }
   
     function formatTotal(muA, muB) {
@@ -69,49 +63,88 @@
       if (!Number.isFinite(p) || p <= 0) return "N/A";
       if (p >= 0.999) return "-∞";
       if (p <= 0.5) {
-        // underdog, positive line
         const odds = (1 - p) / p;
         const ml = Math.round(odds * 100);
-        return `+${ml}`;
+        return "+" + ml;
       }
-      // favorite, negative line
       const odds = p / (1 - p);
       const ml = Math.round(100 / odds);
-      return `-${ml}`;
+      return "-" + ml;
     }
   
     // -----------------------
     // Matchup transformation
     // -----------------------
   
-    function buildMatchupModels(semiResults) {
-      // semiResults: [{ projected, sim }, ...]
-      return semiResults.map((entry, idx) => {
-        const { projected, sim } = entry;
-        const teamA = projected.teamA;
-        const teamB = projected.teamB;
+    /**
+     * semiResults items look like:
+     *   {
+     *     matchup: <projectedMatchup>,  // from ProjectionEngine.projectMatchup
+     *     sim: <simResult>
+     *   }
+     */
+    function buildMatchupModels(results) {
+      return results.map(function (entry, idx) {
+        const projectedMatchup = entry.matchup;
+        const sim = entry.sim;
   
-        const nameA = teamA.team.teamDisplayName;
-        const nameB = teamB.team.teamDisplayName;
+        const fallbackId = "m-" + (idx + 1);
   
-        const muA = teamA.projection.totalMean;
-        const muB = teamB.projection.totalMean;
+        if (!projectedMatchup || !projectedMatchup.projected) {
+          return {
+            id: fallbackId,
+            roundLabel: "Matchup",
+            bestOf: 1,
+            nameA: "TBD",
+            nameB: "TBD",
+            muA: NaN,
+            muB: NaN,
+            rangeA: { low: NaN, high: NaN },
+            rangeB: { low: NaN, high: NaN },
+            winA: 0.5,
+            winB: 0.5,
+            favoriteName: null,
+            favoriteWinProb: null,
+            underdogName: null,
+            impliedSpread: "N/A",
+            impliedTotal: "–",
+          };
+        }
+  
+        const pm = projectedMatchup.projected;
+        const teamA = pm.teamA;
+        const teamB = pm.teamB;
+  
+        const nameA =
+          teamA && teamA.team && teamA.team.teamDisplayName
+            ? teamA.team.teamDisplayName
+            : "Team A";
+        const nameB =
+          teamB && teamB.team && teamB.team.teamDisplayName
+            ? teamB.team.teamDisplayName
+            : "Team B";
+  
+        const hasProjA = teamA && teamA.projection;
+        const hasProjB = teamB && teamB.projection;
+  
+        const muA = hasProjA ? teamA.projection.totalMean : NaN;
+        const muB = hasProjB ? teamB.projection.totalMean : NaN;
   
         const rangeA = {
-          low: teamA.projection.rangeLow,
-          high: teamA.projection.rangeHigh,
+          low: hasProjA ? teamA.projection.rangeLow : NaN,
+          high: hasProjA ? teamA.projection.rangeHigh : NaN,
         };
         const rangeB = {
-          low: teamB.projection.rangeLow,
-          high: teamB.projection.rangeHigh,
+          low: hasProjB ? teamB.projection.rangeLow : NaN,
+          high: hasProjB ? teamB.projection.rangeHigh : NaN,
         };
   
         const winA = sim ? sim.teamAWinPct : 0.5;
         const winB = sim ? sim.teamBWinPct : 0.5;
   
-        let favoriteName = null;
-        let favoriteWinProb = null;
-        let underdogName = null;
+        var favoriteName = null;
+        var favoriteWinProb = null;
+        var underdogName = null;
   
         if (winA > winB) {
           favoriteName = nameA;
@@ -124,20 +157,20 @@
         }
   
         return {
-          id: `semi-${idx + 1}`,
-          roundLabel: projected.roundLabel || "Semifinal",
-          bestOf: projected.bestOf || 1,
-          nameA,
-          nameB,
-          muA,
-          muB,
-          rangeA,
-          rangeB,
-          winA,
-          winB,
-          favoriteName,
-          favoriteWinProb,
-          underdogName,
+          id: projectedMatchup.id || fallbackId,
+          roundLabel: projectedMatchup.roundLabel || "Matchup",
+          bestOf: projectedMatchup.bestOf || 1,
+          nameA: nameA,
+          nameB: nameB,
+          muA: muA,
+          muB: muB,
+          rangeA: rangeA,
+          rangeB: rangeB,
+          winA: winA,
+          winB: winB,
+          favoriteName: favoriteName,
+          favoriteWinProb: favoriteWinProb,
+          underdogName: underdogName,
           impliedSpread: formatSpread(muA, muB, nameA, nameB),
           impliedTotal: formatTotal(muA, muB),
         };
@@ -173,98 +206,146 @@
       const isFavorite = !!favoriteName;
       const favClass = isFavorite ? "favorite" : "";
   
-      return `
-        <article class="matchup-card ${favClass}">
-          <div class="matchup-header">
-            <div class="matchup-teams">
-              ${nameA} vs ${nameB}
-            </div>
-            <div class="matchup-meta">
-              ${roundLabel || "Playoffs"} • Best-of-${bestOf || 1}
-            </div>
-          </div>
-          <div class="matchup-scores">
-            <span>
-              <strong>${formatScore(muA)}</strong> proj
-              &nbsp;(${formatRange(rangeA.low, rangeA.high)}) ${tagFavA}
-            </span>
-            <span>
-              <strong>${formatScore(muB)}</strong> proj
-              &nbsp;(${formatRange(rangeB.low, rangeB.high)}) ${tagFavB}
-            </span>
-          </div>
-          <div class="matchup-meta" style="margin-top: 6px;">
-            Win odds: ${nameA} ${formatPercent(winA)}, ${nameB} ${formatPercent(winB)}<br/>
-            Line: ${impliedSpread} • Total: ${impliedTotal}
-          </div>
-        </article>
-      `;
+      return (
+        '<article class="matchup-card ' +
+        favClass +
+        '">' +
+        '<div class="matchup-header">' +
+        '<div class="matchup-teams">' +
+        nameA +
+        " vs " +
+        nameB +
+        "</div>" +
+        '<div class="matchup-meta">' +
+        (roundLabel || "Playoffs") +
+        " • Best-of-" +
+        (bestOf || 1) +
+        "</div>" +
+        "</div>" +
+        '<div class="matchup-scores">' +
+        "<span>" +
+        "<strong>" +
+        formatScore(muA) +
+        "</strong> proj&nbsp;(" +
+        formatRange(rangeA.low, rangeA.high) +
+        ") " +
+        tagFavA +
+        "</span>" +
+        "<span>" +
+        "<strong>" +
+        formatScore(muB) +
+        "</strong> proj&nbsp;(" +
+        formatRange(rangeB.low, rangeB.high) +
+        ") " +
+        tagFavB +
+        "</span>" +
+        "</div>" +
+        '<div class="matchup-meta" style="margin-top: 6px;">' +
+        "Win odds: " +
+        nameA +
+        " " +
+        formatPercent(winA) +
+        ", " +
+        nameB +
+        " " +
+        formatPercent(winB) +
+        "<br/>" +
+        "Line: " +
+        impliedSpread +
+        " • Total: " +
+        impliedTotal +
+        "</div>" +
+        "</article>"
+      );
     }
   
     function buildNewsletterHtml(leagueName, week, matchupModels, champObj) {
       const lines = [];
   
       const titleLine = leagueName
-        ? `Playoff Semifinals – ${leagueName}`
-        : "Playoff Semifinals";
+        ? "Week " + week + " Matchups – " + leagueName
+        : "Week " + week + " Matchups";
   
-      lines.push(`<h3>${titleLine}</h3>`);
+      lines.push("<h3>" + titleLine + "</h3>");
       lines.push(
-        `<p>Week ${week} projections are in. Here’s how the semifinals stack up once we fold in your latest projections and a pile of Monte Carlo sims.</p>`
+        "<p>Projections for Week " +
+          week +
+          " are in. Here’s how the key matchups stack up once we fold in your projections and a big Monte Carlo sim.</p>"
       );
   
-      matchupModels.forEach((m) => {
-        lines.push(`<h3>${m.nameA} vs ${m.nameB}</h3>`);
+      matchupModels.forEach(function (m) {
+        lines.push("<h3>" + m.nameA + " vs " + m.nameB + "</h3>");
         lines.push(
-          `<p><strong>Projected score:</strong> ${m.nameA} ${formatScore(
-            m.muA
-          )} – ${m.nameB} ${formatScore(m.muB)} (total ${
-            m.impliedTotal
-          }, line ${m.impliedSpread}).</p>`
+          "<p><strong>Projected score:</strong> " +
+            m.nameA +
+            " " +
+            formatScore(m.muA) +
+            " – " +
+            m.nameB +
+            " " +
+            formatScore(m.muB) +
+            " (total " +
+            m.impliedTotal +
+            ", line " +
+            m.impliedSpread +
+            ").</p>"
         );
         lines.push(
-          `<p><strong>Win odds:</strong> ${m.nameA} ${formatPercent(
-            m.winA
-          )}, ${m.nameB} ${formatPercent(m.winB)}. ${m.favoriteName
-            ? `${m.favoriteName} enter as the statistical favorite, but a couple of boom weeks can flip this fast.`
-            : "This projects as a true coin flip – every lineup call matters."}</p>`
+          "<p><strong>Win odds:</strong> " +
+            m.nameA +
+            " " +
+            formatPercent(m.winA) +
+            ", " +
+            m.nameB +
+            " " +
+            formatPercent(m.winB) +
+            ". " +
+            (m.favoriteName
+              ? m.favoriteName +
+                " enter as the statistical favorite, but a couple of boom weeks can flip this fast."
+              : "This projects as a true coin flip – every lineup call matters.") +
+            "</p>"
         );
       });
   
       if (champObj) {
-        const entries = Object.entries(champObj).sort(
-          (a, b) => (b[1].titleOdds || 0) - (a[1].titleOdds || 0)
-        );
+        const entries = Object.entries(champObj).sort(function (a, b) {
+          const pa = (a[1] && a[1].titleOdds) || 0;
+          const pb = (b[1] && b[1].titleOdds) || 0;
+          return pb - pa;
+        });
   
-        lines.push(`<h3>Big Picture: Who’s Actually Winning This Thing?</h3>`);
+        lines.push("<h3>Big Picture: Title Odds</h3>");
         lines.push(
-          `<p>Simulating the bracket forward from these semifinal projections gives the following title odds:</p>`
+          "<p>Simulating the bracket forward from these matchups gives the following title odds:</p>"
         );
-  
         lines.push('<table class="odds-table"><thead><tr>');
         lines.push(
           "<th>Team</th><th>Reach Final</th><th>Win Title</th><th>Implied Line</th>"
         );
         lines.push("</tr></thead><tbody>");
   
-        entries.forEach(([teamName, info]) => {
-          const reach = info.path && typeof info.path.reachFinalPct === "number"
-            ? info.path.reachFinalPct
-            : 0;
-          const titleOdds = info.titleOdds || 0;
-          const line = probabilityToMoneyline(titleOdds);
+        entries.forEach(function (pair) {
+          var teamName = pair[0];
+          var info = pair[1] || {};
+          var reach =
+            info.path && typeof info.path.reachFinalPct === "number"
+              ? info.path.reachFinalPct
+              : 0;
+          var titleOdds = info.titleOdds || 0;
+          var line = probabilityToMoneyline(titleOdds);
   
           lines.push("<tr>");
-          lines.push(`<td>${teamName}</td>`);
-          lines.push(`<td>${formatPercent(reach, 1)}</td>`);
-          lines.push(`<td>${formatPercent(titleOdds, 1)}</td>`);
-          lines.push(`<td class="small">${line}</td>`);
+          lines.push("<td>" + teamName + "</td>");
+          lines.push("<td>" + formatPercent(reach, 1) + "</td>");
+          lines.push("<td>" + formatPercent(titleOdds, 1) + "</td>");
+          lines.push('<td class="small">' + line + "</td>");
           lines.push("</tr>");
         });
   
         lines.push("</tbody></table>");
         lines.push(
-          `<p class="small">Implied lines are computed off the modeled probabilities and are just for fun, not a betting recommendation.</p>`
+          '<p class="small">Implied lines are computed off the modeled probabilities and are just for fun, not a betting recommendation.</p>'
         );
       }
   
@@ -282,7 +363,8 @@
       const cfg = window.LEAGUE_CONFIG || {};
   
       if (matchupsContainer) {
-        matchupsContainer.innerHTML = `<div class="loading">Loading Week ${week} matchups…</div>`;
+        matchupsContainer.innerHTML =
+          '<div class="loading">Loading Week ' + week + " matchups…</div>";
       }
       if (newsletterContent) {
         newsletterContent.innerHTML =
@@ -301,7 +383,6 @@
           );
         }
   
-        // Pull league bundle for this week
         const bundle = await window.SleeperClient.fetchLeagueBundle({
           weeks: [week],
         });
@@ -312,53 +393,54 @@
         const season = league.season || (cfg.season && cfg.season.year) || "";
   
         if (subtitle) {
-          subtitle.textContent = `${leagueName} • Season ${season} • Week ${week}`;
+          subtitle.textContent =
+            leagueName + " • Season " + season + " • Week " + week;
         }
   
-        // Build the "snapshot" shape that LeagueModels.buildPlayoffMatchups expects
         const snapshot = {
-          league,
+          league: league,
           users: bundle.users || [],
           rosters: bundle.rosters || [],
-          matchups: (bundle.matchupsByWeek && bundle.matchupsByWeek[week]) || [],
+          matchups:
+            (bundle.matchupsByWeek && bundle.matchupsByWeek[week]) || [],
+          winnersBracket: bundle.winnersBracket || [],
         };
   
-        // Ask LeagueModels to figure out the playoff pairings for this week
-        const semiMatchups =
+        const weekMatchups =
           window.LeagueModels.buildPlayoffMatchups(snapshot, cfg) || [];
   
-        if (!semiMatchups.length) {
+        if (!weekMatchups.length) {
           console.warn(
-            "[newsletter.js] No semifinal matchups produced by LeagueModels.buildPlayoffMatchups.",
-            { snapshot, cfg }
+            "[newsletter.js] No matchups produced by LeagueModels.buildPlayoffMatchups.",
+            { snapshot: snapshot, cfg: cfg }
           );
   
           if (matchupsContainer) {
-            matchupsContainer.innerHTML = `
-              <article class="matchup-card">
-                <div class="matchup-header">
-                  <div class="matchup-teams">No playoff semifinals detected for Week ${week}</div>
-                </div>
-                <div class="matchup-scores">
-                  <span class="small">
-                    Check <code>league_config.js</code> playoff weeks and confirm your Sleeper league's playoff bracket has started.
-                  </span>
-                </div>
-              </article>
-            `;
+            matchupsContainer.innerHTML =
+              '<article class="matchup-card">' +
+              '<div class="matchup-header">' +
+              '<div class="matchup-teams">No matchups detected for Week ' +
+              week +
+              "</div>" +
+              "</div>" +
+              '<div class="matchup-scores">' +
+              "<span class=\"small\">" +
+              "Check your league playoff weeks and confirm Sleeper has generated matchups for this week." +
+              "</span>" +
+              "</div>" +
+              "</article>";
           }
   
           if (newsletterContent) {
-            newsletterContent.innerHTML = `
-              <p>
-                League data loaded, but no clear semifinal matchups were detected for Week ${week}.
-                Once the winners bracket is seeded (or the correct playoff week is configured),
-                this panel will automatically populate with projections and title odds.
-              </p>
-            `;
+            newsletterContent.innerHTML =
+              "<p>" +
+              "League data loaded, but no clear matchups were detected for Week " +
+              week +
+              ". Once Sleeper generates matchups (or the correct week is configured), " +
+              "this panel will automatically populate with projections and title odds." +
+              "</p>";
           }
   
-          // Clear charts if possible
           if (window.PlayoffCharts) {
             try {
               window.PlayoffCharts.renderSemifinalOdds(
@@ -377,20 +459,18 @@
           return;
         }
   
-        // Run projections + sims for each semifinal
-        const semiResults = semiMatchups.map((m) => {
+        const semiResults = weekMatchups.map(function (m) {
           const projected = window.ProjectionEngine.projectMatchup(m);
           const sim = window.ProjectionEngine.simulateMatchup(projected, {
             sims: 20000,
             trackScores: false,
           });
-          return { projected, sim };
+          return { matchup: projected, sim: sim };
         });
   
         window.__SEMI_RESULTS__ = semiResults;
   
-        // Championship odds (if we have exactly two semis)
-        let champObj = null;
+        var champObj = null;
         if (semiResults.length === 2) {
           try {
             champObj = window.ProjectionEngine.computeChampionshipOdds(
@@ -407,14 +487,14 @@
   
         const matchupModels = buildMatchupModels(semiResults);
   
-        // ---- Render matchup cards ----
         if (matchupsContainer) {
           matchupsContainer.innerHTML = matchupModels
-            .map((m) => renderMatchupCard(m))
+            .map(function (m) {
+              return renderMatchupCard(m);
+            })
             .join("");
         }
   
-        // ---- Render newsletter body ----
         if (newsletterContent) {
           newsletterContent.innerHTML = buildNewsletterHtml(
             leagueName,
@@ -424,15 +504,17 @@
           );
         }
   
-        // ---- Render charts ----
         if (window.PlayoffCharts) {
-          const semisForChart = matchupModels.map((m) => ({
-            id: m.id,
-            label: `${m.nameA} vs ${m.nameB}`,
-            favoriteName: m.favoriteName || m.nameA,
-            favoriteWinProb: m.favoriteWinProb != null ? m.favoriteWinProb : 0.5,
-            underdogName: m.underdogName || m.nameB,
-          }));
+          const semisForChart = matchupModels.map(function (m) {
+            return {
+              id: m.id,
+              label: m.nameA + " vs " + m.nameB,
+              favoriteName: m.favoriteName || m.nameA,
+              favoriteWinProb:
+                m.favoriteWinProb != null ? m.favoriteWinProb : 0.5,
+              underdogName: m.underdogName || m.nameB,
+            };
+          });
   
           try {
             window.PlayoffCharts.renderSemifinalOdds(
@@ -445,48 +527,51 @@
   
           if (champObj) {
             try {
-              const champArray = Object.entries(champObj).map(
-                ([teamName, info]) => ({
-                  teamName,
-                  probability: info.titleOdds || 0,
-                })
-              );
+              const champArray = Object.entries(champObj).map(function (pair) {
+                return {
+                  teamName: pair[0],
+                  probability: pair[1].titleOdds || 0,
+                };
+              });
               window.PlayoffCharts.renderChampionshipOdds(
                 "title-odds-chart",
                 champArray
               );
             } catch (err) {
-              console.warn("[newsletter.js] Championship chart render error:", err);
+              console.warn(
+                "[newsletter.js] Championship chart render error:",
+                err
+              );
             }
           }
         }
       } catch (err) {
         console.error("[newsletter.js] loadWeek error:", err);
         if (matchupsContainer) {
-          matchupsContainer.innerHTML = `
-            <article class="matchup-card">
-              <div class="matchup-header">
-                <div class="matchup-teams">Error loading data from Sleeper</div>
-              </div>
-              <div class="matchup-scores">
-                <span class="small">${err.message || "Unknown error"}</span>
-              </div>
-            </article>
-          `;
+          matchupsContainer.innerHTML =
+            '<article class="matchup-card">' +
+            '<div class="matchup-header">' +
+            '<div class="matchup-teams">Error loading data from Sleeper</div>' +
+            "</div>" +
+            '<div class="matchup-scores">' +
+            "<span class=\"small\">" +
+            (err.message || "Unknown error") +
+            "</span>" +
+            "</div>" +
+            "</article>";
         }
         if (newsletterContent) {
-          newsletterContent.innerHTML = `
-            <p>
-              Something went wrong while pulling projections and simulations.
-              Open the browser console for more detail and confirm your API calls are succeeding.
-            </p>
-          `;
+          newsletterContent.innerHTML =
+            "<p>" +
+            "Something went wrong while pulling projections and simulations. " +
+            "Open the browser console for more detail and confirm your API calls are succeeding." +
+            "</p>";
         }
       }
     }
   
     // -----------------------
-    // Bootstrap (hook into index.html controls)
+    // Bootstrap
     // -----------------------
   
     async function init() {
@@ -509,12 +594,12 @@
         for (let w = 1; w <= maxWeeks; w++) {
           const opt = document.createElement("option");
           opt.value = String(w);
-          opt.textContent = `Week ${w}`;
+          opt.textContent = "Week " + w;
           if (w === Number(defaultWeek)) opt.selected = true;
           weekSelect.appendChild(opt);
         }
   
-        weekSelect.addEventListener("change", () => {
+        weekSelect.addEventListener("change", function () {
           const w = parseInt(weekSelect.value, 10);
           if (Number.isFinite(w)) {
             loadWeek(w);
@@ -523,7 +608,7 @@
       }
   
       if (refreshBtn) {
-        refreshBtn.addEventListener("click", () => {
+        refreshBtn.addEventListener("click", function () {
           const w = weekSelect
             ? parseInt(weekSelect.value, 10)
             : Number(defaultWeek);
@@ -542,10 +627,9 @@
   
     document.addEventListener("DOMContentLoaded", init);
   
-    // Expose for manual refresh in the console
     window.PlayoffNewsletterApp = {
-      loadWeek,
-      refresh: () => {
+      loadWeek: loadWeek,
+      refresh: function () {
         const weekSelect = $("#week-select");
         const w = weekSelect
           ? parseInt(weekSelect.value, 10)
