@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dynasty Playoff Hub</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #020617;
+      --bg-panel: #020617;
+      --bg-card: rgba(15, 23, 42, 0.95);
+      --border-subtle: #1f2937;
+      --border-strong: #4b5563;
+      --accent: #22c55e;
+      --accent-soft: rgba(34, 197, 94, 0.16);
+      --text-main: #e5e7eb;
+      --text-soft: #9ca3af;
+      --danger: #f97373;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #0f172a, #020617 60%);
+      color: var(--text-main);
+      min-height: 100vh;
+    }
+
+    #app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    .top-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 8px;
+    }
+
+    .top-bar-title {
+      font-size: 1.4rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .top-bar-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-soft);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--bg-panel);
+      border-radius: 16px;
+      border: 1px solid var(--border-subtle);
+      padding: 16px;
+      box-shadow: 0 18px 35px rgba(0, 0, 0, 0.45);
+      min-height: 240px;
+    }
+
+    .panel h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0 0 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+    }
+
+    .matchup-card {
+      background: var(--bg-card);
+      border-radius: 14px;
+      border: 1px solid #111827;
+      padding: 12px;
+      margin-bottom: 10px;
+      transition: border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+    }
+
+    .matchup-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: 0 12px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    .matchup-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4px;
+    }
+
+    .matchup-teams {
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    .seed-label {
+      font-size: 0.75rem;
+      color: var(--text-soft);
+      margin-left: 4px;
+    }
+
+    .matchup-meta {
+      font-size: 0.75rem;
+      color: var(--text-soft);
+    }
+
+    .matchup-scores {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 0.85rem;
+    }
+
+    .matchup-scores span strong {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .favorite {
+      border-left: 3px solid var(--accent);
+      padding-left: 9px;
+    }
+
+    .newsletter-body {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: var(--text-main);
+      max-width: 100%;
+    }
+
+    .newsletter-body h3 {
+      font-size: 1.05rem;
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+
+    .newsletter-body p {
+      margin: 8px 0;
+    }
+
+    .odds-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+
+    .odds-table th,
+    .odds-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border-subtle);
+      text-align: left;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-soft);
+      margin-left: 4px;
+    }
+
+    .tag-favorite {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .tag-underdog {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .small {
+      font-size: 0.8rem;
+      color: var(--text-soft);
+    }
+
+    .loading {
+      font-size: 0.9rem;
+      color: var(--text-soft);
+    }
+
+    .charts-wrapper {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .chart-card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+      padding: 12px;
+    }
+
+    .chart-card h3 {
+      font-size: 0.95rem;
+      margin: 0 0 8px;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    canvas {
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="top-bar">
+      <div>
+        <div class="top-bar-title">Playoff Hub</div>
+        <div class="top-bar-subtitle" id="league-subtitle">
+          Loading league info…
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h2>Matchups</h2>
+        <div id="matchups-container">
+          <div class="loading">Fetching semifinal matchups…</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Newsletter</h2>
+        <div id="newsletter-content" class="newsletter-body">
+          <p>As soon as the league data loads, this panel will show the semifinal preview, win odds, and title odds for De’Von Intervention, The Jeffersons, SirTony, and Tightest Ends.</p>
+          <p class="small">This page runs entirely in your browser using Sleeper’s public API.</p>
+
+          <div class="charts-wrapper">
+            <div class="chart-card">
+              <h3>Semifinal Win Odds</h3>
+              <canvas id="semifinal-odds-chart" height="140"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Championship Odds</h3>
+              <canvas id="title-odds-chart" height="160"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Vendor: Chart.js (optional; if blocked, charts will just no-op) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- If you prefer, download chart.umd.js into your repo and replace the line above with: -->
+  <!-- <script src="chart.umd.js"></script> -->
+
+  <!-- App scripts (order matters) -->
+  <script src="league_config.js"></script>
+  <script src="sleeper_client.js"></script>
+  <script src="models.js"></script>
+  <script src="projections.js"></script>
+  <script src="charts.js"></script>
+  <script src="newsletter.js"></script>
+</body>
+</html>
