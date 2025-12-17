@@ -1016,6 +1016,25 @@
     height: 100% !important; /* keeps Week 16 cards from stretching page */
   }
   
+  .roster-player {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1.5fr) 40px 80px;
+    gap: 4px;
+    font-size: 0.9rem;
+    align-items: center;
+  }
+  
+  .player-ktc {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .player-ktc-rank {
+    display: inline-block;
+    margin-left: 4px;
+    opacity: 0.7;
+  }
+  
   /* ------------------------------------------------------
      INSIGHTS
   ------------------------------------------------------- */

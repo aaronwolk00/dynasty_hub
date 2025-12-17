@@ -10,19 +10,20 @@ from supabase import create_client, Client
 # Config
 # -----------------------------------------------------------------------------
 
-# We filter by position to ensure we get the main table
-KTC_RANKINGS_URL = "https://keeptradecut.com/dynasty-rankings?page=0&filters=QB|WR|RB|TE|RDP"
-KTC_FORMAT = "1qb"
+# We use a formatted string for the URL to inject the page number dynamically
+# page={page} will be replaced in the loop
+KTC_BASE_URL = "https://keeptradecut.com/dynasty-rankings?page={page}&filters=QB|WR|RB|TE&format=2"
+KTC_FORMAT = "superflex"
+
+# How many pages to scrape? (0-9 covers top 1000 players, which is plenty)
+MAX_PAGES = 10 
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    # We print a warning but allow it to run locally if env vars aren't set, 
-    # though it will fail at the upsert step.
     print("WARNING: Supabase credentials not found in env.")
 
-# Initialize Supabase (if creds exist)
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -36,9 +37,10 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-def fetch_ktc_html() -> str:
-    print(f"[ktc] fetching {KTC_RANKINGS_URL}")
-    resp = requests.get(KTC_RANKINGS_URL, headers=HEADERS, timeout=20)
+def fetch_ktc_page(page_num: int) -> str:
+    url = KTC_BASE_URL.format(page=page_num)
+    print(f"[ktc] fetching page {page_num}: {url}")
+    resp = requests.get(url, headers=HEADERS, timeout=20)
     resp.raise_for_status()
     return resp.text
 
@@ -50,18 +52,16 @@ def parse_ktc_table(html: str) -> List[Dict]:
     # 1. Find the main container
     container = soup.select_one("#rankings-page-rankings")
     if not container:
-        print("[ktc] ERROR: Could not find #rankings-page-rankings container")
+        print("[ktc] WARNING: Could not find #rankings-page-rankings container")
         return []
 
     # 2. Find direct children divs (The players) safely
-    # recursive=False means "only direct children", same as "> div" but safer
     player_rows = container.find_all("div", recursive=False)
 
     for row in player_rows:
         # Check if this div is actually a player row (it should have a name)
         name_el = row.select_one(".player-name a")
         if not name_el:
-            # This might be an ad or a header row, skip it
             continue
 
         # --- Extract Data ---
@@ -93,7 +93,6 @@ def parse_ktc_table(html: str) -> List[Dict]:
 
         # ID Generation (Slug)
         href = name_el.get("href", "")
-        # href looks like /dynasty-rankings/players/patrick-mahomes-1
         slug = href.split("/")[-1] if href else f"{player_name}_{position}"
         ktc_player_id = slug.lower()
 
@@ -108,7 +107,6 @@ def parse_ktc_table(html: str) -> List[Dict]:
             "as_of_date": today.isoformat(),
         })
 
-    print(f"[ktc] parsed {len(results)} rows")
     return results
 
 # -----------------------------------------------------------------------------
@@ -126,30 +124,45 @@ def upsert_ktc_values(rows: List[Dict]) -> None:
 
     print(f"[ktc] upserting {len(rows)} rows to supabase...")
 
-    # We batch the upserts to avoid timeouts if the list is huge (optional but good practice)
-    batch_size = 100
+    # Batch upsert to handle larger datasets (500+ rows) smoothly
+    batch_size = 200
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
         try:
-            # Ensure your table is named 'ktc_values' in Supabase
             supabase.table("ktc_values").upsert(
                 batch, on_conflict="ktc_player_id,format,as_of_date"
             ).execute()
+            print(f"   - batch {i} to {i+len(batch)} success")
         except Exception as e:
             print(f"[ktc] Error upserting batch {i}: {e}")
 
     print("[ktc] finished.")
 
 def main():
+    all_rows = []
+    
     try:
-        html = fetch_ktc_html()
-        rows = parse_ktc_table(html)
-        upsert_ktc_values(rows)
+        # Loop through pages
+        for page in range(MAX_PAGES):
+            html = fetch_ktc_page(page)
+            page_rows = parse_ktc_table(html)
+            
+            if not page_rows:
+                print(f"[ktc] Page {page} returned 0 rows. Stopping.")
+                break
+            
+            print(f"[ktc] Page {page} parsed {len(page_rows)} rows.")
+            all_rows.extend(page_rows)
+            
+            # Be polite to KTC server
+            time.sleep(2)
+
+        print(f"[ktc] Total rows collected: {len(all_rows)}")
+        upsert_ktc_values(all_rows)
+
     except Exception as e:
         print(f"[ktc] CRITICAL ERROR: {e}")
         exit(1)
 
 if __name__ == "__main__":
     main()
-
-
