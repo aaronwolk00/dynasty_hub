@@ -197,6 +197,18 @@
       }
       return null;
     }
+
+    function getRoundLabelFromConfig(cfg, week) {
+        const playoffStart = cfg.PLAYOFF_START_WEEK || 15;   // 2 QF
+        const semiWeek = cfg.SEMIFINAL_WEEK || 16;          // 2 SF
+        const champWeek = cfg.CHAMPIONSHIP_WEEK || 17;      // Final
+      
+        if (week === champWeek) return "Championship";
+        if (week === semiWeek) return "Semifinals";
+        if (week === playoffStart) return "Quarterfinals";
+        return "Week " + week;
+      }
+      
   
     // -----------------------
     // Matchup models for UI
@@ -530,145 +542,25 @@
         );
         lines.push("</section>");
       
-        // Matchup cards
+        // Matchup list – use the same matchup cards as the Matchups panel
         lines.push('<section class="newsletter-matchups-list">');
       
         matchupModels.forEach((m) => {
-          // Work out winner / loser for nicer copy
-          let winnerName = m.nameA;
-          let loserName = m.nameB;
-          let winnerScore = m.muA;
-          let loserScore = m.muB;
+          // Base card markup from renderMatchupCard
+          let cardHtml = renderMatchupCard(m);
       
-          if (m.muB > m.muA) {
-            winnerName = m.nameB;
-            loserName = m.nameA;
-            winnerScore = m.muB;
-            loserScore = m.muA;
-          }
-      
-          const margin = Math.abs(winnerScore - loserScore);
-          const marginText = formatScore(margin, 1);
-          const totalText = formatTotal(m.muA, m.muB);
-      
-          // Tag based on margin / scoring profile
-          let tagLabel = "";
-          let tagClass = "";
-      
-          if (margin < 5) {
-            tagLabel = "Close Game";
-            tagClass = "close";
-          } else if (margin >= 25) {
-            tagLabel = "Blowout";
-            tagClass = "blowout";
-          }
-      
-          // Extra “Track Meet” badge for true shootouts
-          const totalVal = Number(totalText);
-          if (!isNaN(totalVal) && totalVal >= 185) {
-            tagLabel = "Track Meet";
-            tagClass = "track";
-          }
-      
-          lines.push('<article class="newsletter-card newsletter-matchup-card">');
-      
-          // Header row: teams + pill
-          lines.push('<div class="nm-header-row">');
-          lines.push(
-            '<div class="nm-teams">' +
-              m.nameA +
-              ' <span class="nm-vs">vs</span> ' +
-              m.nameB +
-              "</div>"
-          );
-          if (tagLabel) {
-            lines.push(
-              '<span class="nm-tag ' + tagClass + '">' + tagLabel + "</span>"
-            );
-          }
-          lines.push("</div>");
-      
-          // Meta row (compact summary)
-          if (isResults) {
-            lines.push(
-              '<div class="nm-meta small">Final ' +
-                formatScore(winnerScore) +
-                "–" +
-                formatScore(loserScore) +
-                " · Margin " +
-                marginText +
-                " · Total " +
-                totalText +
-                "</div>"
-            );
-          } else {
-            lines.push(
-              '<div class="nm-meta small">Projected ' +
-                formatScore(m.muA) +
-                "–" +
-                formatScore(m.muB) +
-                " · Line " +
-                m.impliedSpread +
-                " · Total " +
-                totalText +
-                "</div>"
+          // If you want recap text (results weeks only), append it inside the card
+          if (isResults && recapById && recapById[m.id]) {
+            // Insert recap before closing article
+            cardHtml = cardHtml.replace(
+              "</article>",
+              '<p class="nm-recap">' +
+                recapById[m.id] +
+                "</p></article>"
             );
           }
       
-          // Main line + recap
-          if (isResults) {
-            lines.push(
-              '<p class="nm-final-line"><span class="label">Final score:</span>' +
-                winnerName +
-                " " +
-                formatScore(winnerScore) +
-                " – " +
-                loserName +
-                " " +
-                formatScore(loserScore) +
-                ".</p>"
-            );
-      
-            const recap =
-              recapById && recapById[m.id]
-                ? recapById[m.id]
-                : null;
-      
-            if (recap) {
-              lines.push('<p class="nm-recap">' + recap + "</p>");
-            }
-          } else {
-            // Projection mode
-            lines.push(
-              '<p class="nm-final-line"><span class="label">Projected score:</span>' +
-                m.nameA +
-                " " +
-                formatScore(m.muA) +
-                " – " +
-                m.nameB +
-                " " +
-                formatScore(m.muB) +
-                ".</p>"
-            );
-            lines.push(
-              '<p class="nm-recap">Win odds: ' +
-                m.nameA +
-                " " +
-                formatPercent(m.winA) +
-                ", " +
-                m.nameB +
-                " " +
-                formatPercent(m.winB) +
-                ". " +
-                (m.favoriteName
-                  ? m.favoriteName +
-                    " come in as the modeled favorite, but a couple of boom weeks can flip this fast."
-                  : "This projects as a true coin flip – every lineup call matters.") +
-                "</p>"
-            );
-          }
-      
-          lines.push("</article>");
+          lines.push(cardHtml);
         });
       
         lines.push("</section>");
@@ -687,7 +579,7 @@
             );
             lines.push("<h3>Championship Picture</h3>");
             lines.push(
-              "<p class=\"small\">Simulating the bracket forward from these matchups gives the following title odds:</p>"
+              '<p class="small">Simulating the bracket forward from these matchups gives the following title odds:</p>'
             );
       
             lines.push('<table class="odds-table"><thead><tr>');
@@ -736,6 +628,7 @@
       
         return lines.join("\n");
       }
+      
       
   
   
@@ -1325,16 +1218,15 @@
             const id =
               computeMatchupIdForWeek(m, week) ||
               "week" + week + "_m_fallback" + (idx + 1);
-  
+          
             return {
               id,
-              roundLabel: m.roundLabel || "Week " + week,
+              roundLabel: getRoundLabelFromConfig(cfg, week),
               bestOf: 1,
               historical: true,
               teams: m.teams,
-              // we might later mark isSemi via SEMI_MATCHUP_ID_SET
             };
-          });
+          });          
         } else {
           // Future / current week: projections + sims
           for (let i = 0; i < weeklyMatchups.length; i++) {
@@ -1363,13 +1255,14 @@
               computeMatchupIdForWeek(m, week) ||
               "week" + week + "_m_fallback" + (i + 1);
   
-            matchupEntries.push({
-              id,
-              roundLabel: m.roundLabel || "Week " + week,
-              bestOf: m.bestOf || 1,
-              projectedMatchup,
-              sim,
-            });
+              matchupEntries.push({
+                id,
+                roundLabel: getRoundLabelFromConfig(cfg, week),
+                bestOf: m.bestOf || 1,
+                projectedMatchup,
+                sim,
+              });
+              
           }
   
           // Optional: championship odds if this is the semifinal week
@@ -1607,14 +1500,29 @@
   
         // Render newsletter body
         if (newsletterContent) {
-          newsletterContent.innerHTML = buildNewsletterHtml(
-            leagueName,
-            week,
-            matchupModels,
-            champObj,
-            { mode, recapById }
-          );
-        }
+            newsletterContent.innerHTML = buildNewsletterHtml(
+              leagueName,
+              week,
+              matchupModels,
+              champObj,
+              { mode, recapById }
+            );
+          
+            // Click handler: any .matchup-card inside the newsletter should show detail
+            newsletterContent.onclick = (e) => {
+              const card = e.target.closest(".matchup-card");
+              if (!card || !card.dataset.matchupId) return;
+          
+              showDetailForMatchup(card.dataset.matchupId);
+          
+              // Visually mark selected within the newsletter region
+              newsletterContent
+                .querySelectorAll(".matchup-card")
+                .forEach((c) => c.classList.remove("selected"));
+              card.classList.add("selected");
+            };
+          }
+          
   
         // Also update Season Overview tab
         renderSeasonOverview(bundle);
