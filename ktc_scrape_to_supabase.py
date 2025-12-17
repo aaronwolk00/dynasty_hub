@@ -11,7 +11,7 @@ from supabase import create_client, Client
 # -----------------------------------------------------------------------------
 
 # We filter by position to ensure we get the main table
-KTC_RANKINGS_URL = "https://keeptradecut.com/dynasty-rankings?page=0&filters=QB|WR|RB|TE&format=2"
+KTC_RANKINGS_URL = "https://keeptradecut.com/dynasty-rankings?page=0&filters=QB|WR|RB|TE|RDP"
 KTC_FORMAT = "1qb"
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -151,4 +151,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
