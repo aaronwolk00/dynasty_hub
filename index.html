@@ -46,37 +46,24 @@
         <div id="tab-newsletter" class="tab-panel active">
           <h2>Newsletter</h2>
 
-          <!-- This gets filled by newsletter.js with per-matchup cards,
-               bracket, odds, etc. Each matchup card should be clickable
-               and carry data-matchup-id or similar. -->
+          <!-- Filled by newsletter.js with matchup cards, bracket, odds, charts -->
           <div id="newsletter-content" class="newsletter-body">
             <p>
-              As soon as the league data loads, this panel will show the weekly preview
-              or recap, Supabase-driven recap phrases, win odds, title odds, and a playoff bracket.
+              Once league data loads, this view will show the weekly preview or recap,
+              Supabase-driven recap phrases, win odds, title odds, and the playoff picture.
             </p>
             <p class="small">
-              This page runs entirely in your browser using Sleeper’s public API.
+              All projections run locally in your browser using Sleeper’s public API.
             </p>
-
-            <!-- Example charts row; newsletter.js can still own the data -->
-            <div class="newsletter-charts-row">
-              <div class="chart-card">
-                <h3>Matchup / Semifinal Win Odds</h3>
-                <canvas id="semifinal-odds-chart"></canvas>
-              </div>
-              <div class="chart-card">
-                <h3>Championship Odds</h3>
-                <canvas id="title-odds-chart"></canvas>
-              </div>
-            </div>
           </div>
 
-          <!-- Shared Matchup Detail panel now lives under Newsletter.
-               Existing code that writes into #matchup-detail-container
-               will still work; the only change is its location. -->
+          <!-- Shared Matchup Detail panel lives under Newsletter.
+               newsletter.js writes into #matchup-detail-container when a card is clicked. -->
           <h2 class="subheading">Matchup Detail</h2>
           <div id="matchup-detail-container">
-            <div class="loading">Click a matchup in the newsletter above to view player details.</div>
+            <div class="loading">
+              Click any matchup card in the newsletter above to view player-level details.
+            </div>
           </div>
         </div>
 
@@ -88,7 +75,7 @@
 
           <div class="roster-controls">
             <div id="roster-select" class="roster-selector-grid">
-              <!-- Filled after __LAST_BUNDLE__ exists -->
+              <!-- Populated once __LAST_BUNDLE__ is available -->
             </div>
           </div>
 
@@ -115,7 +102,8 @@
                     <tr>
                       <th>#</th>
                       <th>Team</th>
-                      <th>W-L-T</                      <th>Win%</th>
+                      <th>W-L-T</th>
+                      <th>Win%</th>
                       <th>PF</th>
                       <th>PA</th>
                       <th>Diff</th>
@@ -137,8 +125,8 @@
               <h3 class="season-subheading">Analytics Snapshot</h3>
               <div id="season-metrics-container" class="season-metrics-container">
                 <p class="small">
-                  Season metrics will appear here once data loads: top scorers,
-                  best differentials, schedule strength notes, and storyline blurbs.
+                  Season metrics will appear here once data loads: top scorers, best differentials,
+                  schedule strength notes, and storyline blurbs.
                 </p>
               </div>
             </section>
@@ -146,7 +134,7 @@
         </div>
 
         <!-- ======================================================
-             TAB: Insights (Beyond Sleeper)
+             TAB: Insights
         ======================================================= -->
         <div id="tab-insights" class="tab-panel">
           <h2>Insights</h2>
@@ -375,7 +363,8 @@
               })
               .join("");
 
-            rosterContainer.innerHTML = cards || "<p class='small'>No matching rosters.</p>";
+            rosterContainer.innerHTML =
+              cards || "<p class='small'>No matching rosters.</p>";
           }
         }, 400);
       }
