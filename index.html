@@ -185,15 +185,21 @@
           <h2>Newsletter</h2>
 
           <div id="newsletter-content" class="newsletter-body">
-            <p>
-              As soon as the league data loads, this panel will show the weekly preview
-              (or recap), Supabase-driven recap phrases, win odds, and title odds.
-            </p>
-            <p class="small">
-              This page runs entirely in your browser using Sleeper’s public API.
-            </p>
+            <div class="newsletter-header-block">
+              <h3 class="newsletter-heading">Weekly Preview & Recap</h3>
+              <p class="newsletter-intro">
+                Once league data loads, this view will show matchup recaps, Supabase-driven
+                phrases, and playoff odds for the remaining contenders.
+              </p>
+            </div>
 
-            <div class="charts-wrapper">
+            <!-- Matchup recap cards will be injected by newsletter.js -->
+
+            <div class="newsletter-subheading">
+              Odds & Paths
+            </div>
+
+            <div class="newsletter-charts">
               <div class="chart-card">
                 <h3>Matchup / Semifinal Win Odds</h3>
                 <canvas id="semifinal-odds-chart" height="140"></canvas>
@@ -203,6 +209,9 @@
                 <canvas id="title-odds-chart" height="160"></canvas>
               </div>
             </div>
+
+            <!-- newsletter.js can optionally append a title-odds table here -->
+            <div id="title-odds-table-container"></div>
           </div>
         </div>
       </section>
@@ -243,16 +252,16 @@
   </script>
 
   <!-- ==========================================================
-       Supabase + Phrase Engine (for recap lines)
+       Supabase + config + Phrase Engine + KTC client
   =========================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="league_config.js"></script>
   <script src="phrases.js"></script>
+  <script src="ktc_client.js"></script>
 
   <!-- ==========================================================
        App scripts – order matters
   =========================================================== -->
-
   <script src="sleeper_client.js"></script>
   <script src="models.js"></script>
   <script src="projections.js"></script>
@@ -262,10 +271,19 @@
   <script src="insights.js"></script>
 
   <!-- ==========================================================
-       Inline bootstrap: tabs + roster view
+       Inline bootstrap: tabs + roster view + KTC init
   =========================================================== -->
   <script>
     document.addEventListener("DOMContentLoaded", () => {
+      // ----------------------------------------------------
+      // Kick off KTC load (1QB format) – non-blocking
+      // ----------------------------------------------------
+      if (window.KTCClient) {
+        window.KTCClient.init("1qb").catch((err) => {
+          console.error("[KTC] init failed:", err);
+        });
+      }
+
       // ----------------------------------------------------
       // Top-level tab switcher
       // ----------------------------------------------------
@@ -287,7 +305,7 @@
       });
 
       // ----------------------------------------------------
-      // Roster view: button grid fed by __LAST_BUNDLE__
+      // Rosters tab – button grid fed by __LAST_BUNDLE__
       // ----------------------------------------------------
       const rosterSelect = document.getElementById("roster-select");
       const rosterContainer = document.getElementById("roster-view-container");
@@ -360,11 +378,22 @@
                     const fullName = meta?.full_name || pid;
                     const pos = meta?.position || "";
                     const team = meta?.team || "";
+
+                    let ktcChipHtml = "";
+                    if (window.KTCClient) {
+                      const ktcRow = window.KTCClient.getForSleeperId(pid);
+                      if (ktcRow) {
+                        const label = window.KTCClient.formatChip(ktcRow);
+                        ktcChipHtml = `<span class="ktc-chip">${label}</span>`;
+                      }
+                    }
+
                     return `
                       <div class="roster-player">
                         <span class="player-pos">${pos}</span>
                         <span class="player-name">${fullName}</span>
                         <span class="player-team">${team}</span>
+                        ${ktcChipHtml}
                       </div>`;
                   })
                   .join("");
@@ -380,7 +409,8 @@
               })
               .join("");
 
-            rosterContainer.innerHTML = cards || "<p class='small'>No matching rosters.</p>";
+            rosterContainer.innerHTML =
+              cards || "<p class='small'>No matching rosters.</p>";
           }
         }, 400);
       }
