@@ -32,27 +32,51 @@
     =========================================================== -->
     <main class="layout">
       <section class="panel">
-        <!-- Top-level tabs -->
+        <!-- Top-level tabs (Newsletter is primary) -->
         <div class="top-tabs">
-          <button class="tab-btn active" data-tab="matchups">Matchups</button>
+          <button class="tab-btn active" data-tab="newsletter">Newsletter</button>
           <button class="tab-btn" data-tab="rosters">Rosters</button>
           <button class="tab-btn" data-tab="season">Season</button>
           <button class="tab-btn" data-tab="insights">Insights</button>
-          <button class="tab-btn" data-tab="newsletter">Newsletter</button>
         </div>
 
         <!-- ======================================================
-             TAB: Matchups
+             TAB: Newsletter (primary / matchups + recap)
         ======================================================= -->
-        <div id="tab-matchups" class="tab-panel active">
-          <h2>Matchups</h2>
-          <div id="matchups-container">
-            <div class="loading">Fetching matchups…</div>
+        <div id="tab-newsletter" class="tab-panel active">
+          <h2>Newsletter</h2>
+
+          <!-- This gets filled by newsletter.js with per-matchup cards,
+               bracket, odds, etc. Each matchup card should be clickable
+               and carry data-matchup-id or similar. -->
+          <div id="newsletter-content" class="newsletter-body">
+            <p>
+              As soon as the league data loads, this panel will show the weekly preview
+              or recap, Supabase-driven recap phrases, win odds, title odds, and a playoff bracket.
+            </p>
+            <p class="small">
+              This page runs entirely in your browser using Sleeper’s public API.
+            </p>
+
+            <!-- Example charts row; newsletter.js can still own the data -->
+            <div class="newsletter-charts-row">
+              <div class="chart-card">
+                <h3>Matchup / Semifinal Win Odds</h3>
+                <canvas id="semifinal-odds-chart"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3>Championship Odds</h3>
+                <canvas id="title-odds-chart"></canvas>
+              </div>
+            </div>
           </div>
 
+          <!-- Shared Matchup Detail panel now lives under Newsletter.
+               Existing code that writes into #matchup-detail-container
+               will still work; the only change is its location. -->
           <h2 class="subheading">Matchup Detail</h2>
           <div id="matchup-detail-container">
-            <div class="loading">Select a matchup above to view details.</div>
+            <div class="loading">Click a matchup in the newsletter above to view player details.</div>
           </div>
         </div>
 
@@ -91,8 +115,7 @@
                     <tr>
                       <th>#</th>
                       <th>Team</th>
-                      <th>W-L-T</th>
-                      <th>Win%</th>
+                      <th>W-L-T</                      <th>Win%</th>
                       <th>PF</th>
                       <th>PA</th>
                       <th>Diff</th>
@@ -177,43 +200,6 @@
             </section>
           </div>
         </div>
-
-        <!-- ======================================================
-             TAB: Newsletter (Preview / Recap)
-        ======================================================= -->
-        <div id="tab-newsletter" class="tab-panel">
-          <h2>Newsletter</h2>
-
-          <div id="newsletter-content" class="newsletter-body">
-            <div class="newsletter-header-block">
-              <h3 class="newsletter-heading">Weekly Preview & Recap</h3>
-              <p class="newsletter-intro">
-                Once league data loads, this view will show matchup recaps, Supabase-driven
-                phrases, and playoff odds for the remaining contenders.
-              </p>
-            </div>
-
-            <!-- Matchup recap cards will be injected by newsletter.js -->
-
-            <div class="newsletter-subheading">
-              Odds & Paths
-            </div>
-
-            <div class="newsletter-charts">
-              <div class="chart-card">
-                <h3>Matchup / Semifinal Win Odds</h3>
-                <canvas id="semifinal-odds-chart" height="140"></canvas>
-              </div>
-              <div class="chart-card">
-                <h3>Championship Odds</h3>
-                <canvas id="title-odds-chart" height="160"></canvas>
-              </div>
-            </div>
-
-            <!-- newsletter.js can optionally append a title-odds table here -->
-            <div id="title-odds-table-container"></div>
-          </div>
-        </div>
       </section>
     </main>
   </div>
@@ -252,7 +238,7 @@
   </script>
 
   <!-- ==========================================================
-       Supabase + config + Phrase Engine + KTC client
+       Supabase + Phrase Engine (for recap lines + KTC)
   =========================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="league_config.js"></script>
@@ -271,19 +257,10 @@
   <script src="insights.js"></script>
 
   <!-- ==========================================================
-       Inline bootstrap: tabs + roster view + KTC init
+       Inline bootstrap: tabs + roster view
   =========================================================== -->
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // ----------------------------------------------------
-      // Kick off KTC load (1QB format) – non-blocking
-      // ----------------------------------------------------
-      if (window.KTCClient) {
-        window.KTCClient.init("1qb").catch((err) => {
-          console.error("[KTC] init failed:", err);
-        });
-      }
-
       // ----------------------------------------------------
       // Top-level tab switcher
       // ----------------------------------------------------
@@ -305,7 +282,7 @@
       });
 
       // ----------------------------------------------------
-      // Rosters tab – button grid fed by __LAST_BUNDLE__
+      // Roster view: button grid fed by __LAST_BUNDLE__
       // ----------------------------------------------------
       const rosterSelect = document.getElementById("roster-select");
       const rosterContainer = document.getElementById("roster-view-container");
@@ -378,22 +355,11 @@
                     const fullName = meta?.full_name || pid;
                     const pos = meta?.position || "";
                     const team = meta?.team || "";
-
-                    let ktcChipHtml = "";
-                    if (window.KTCClient) {
-                      const ktcRow = window.KTCClient.getForSleeperId(pid);
-                      if (ktcRow) {
-                        const label = window.KTCClient.formatChip(ktcRow);
-                        ktcChipHtml = `<span class="ktc-chip">${label}</span>`;
-                      }
-                    }
-
                     return `
                       <div class="roster-player">
                         <span class="player-pos">${pos}</span>
                         <span class="player-name">${fullName}</span>
                         <span class="player-team">${team}</span>
-                        ${ktcChipHtml}
                       </div>`;
                   })
                   .join("");
@@ -409,8 +375,7 @@
               })
               .join("");
 
-            rosterContainer.innerHTML =
-              cards || "<p class='small'>No matching rosters.</p>";
+            rosterContainer.innerHTML = cards || "<p class='small'>No matching rosters.</p>";
           }
         }, 400);
       }
