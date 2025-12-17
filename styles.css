@@ -1,0 +1,592 @@
+/* ------------------------------------------------------
+   Design Tokens
+------------------------------------------------------- */
+
+:root {
+    /* Core palette */
+    --bg-root: #020314;
+    --bg-gradient-top: #05081f;
+    --bg-gradient-bottom: #020314;
+  
+    --bg-panel: rgba(8, 12, 30, 0.98);
+    --bg-card: rgba(11, 16, 36, 0.98);
+    --bg-card-soft: rgba(15, 23, 42, 0.9);
+  
+    --border-subtle: #111827;
+    --border-strong: #1f2937;
+  
+    --accent: #22c55e;
+    --accent-soft: rgba(34, 197, 94, 0.18);
+    --accent-cyan: #22d3ee;
+  
+    --text-main: #e5e7eb;
+    --text-soft: #9ca3af;
+    --text-faint: #6b7280;
+  
+    --danger: #f97373;
+  
+    --radius-card: 16px;
+    --radius-card-sm: 12px;
+    --radius-pill: 999px;
+  
+    --shadow-card: 0 24px 60px rgba(0, 0, 0, 0.7);
+  
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.8rem;
+    --font-size-md: 0.9rem;
+    --font-size-lg: 1rem;
+  }
+  
+  /* ------------------------------------------------------
+     Global reset / base
+  ------------------------------------------------------- */
+  
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+      "Segoe UI", sans-serif;
+    background:
+      radial-gradient(circle at 80% 0%, rgba(56, 189, 248, 0.14), transparent 55%),
+      radial-gradient(circle at 0% 0%, rgba(34, 197, 94, 0.14), transparent 50%),
+      linear-gradient(to bottom, var(--bg-gradient-top), var(--bg-gradient-bottom));
+    color: var(--text-main);
+    min-height: 100vh;
+  }
+  
+  /* Utility text styles */
+  
+  .small {
+    font-size: var(--font-size-xs);
+    color: var(--text-soft);
+  }
+  
+  .loading {
+    font-size: var(--font-size-md);
+    color: var(--text-soft);
+  }
+  
+  /* ------------------------------------------------------
+     Shell layout
+  ------------------------------------------------------- */
+  
+  #app {
+    max-width: 1500px;
+    margin: 24px auto 40px;
+    padding: 0 20px;
+  }
+  
+  .top-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    gap: 8px;
+  }
+  
+  .top-bar-title {
+    font-size: 1.4rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  
+  .top-bar-subtitle {
+    font-size: var(--font-size-xs);
+    color: var(--text-soft);
+  }
+  
+  /* Controls (week + refresh) */
+  
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-size-md);
+  }
+  
+  .controls select,
+  .controls button {
+    background: #020617;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border-strong);
+    color: var(--text-main);
+    padding: 6px 12px;
+    font-size: var(--font-size-sm);
+  }
+  
+  .controls select {
+    cursor: pointer;
+  }
+  
+  .controls button {
+    cursor: pointer;
+    border-color: var(--accent);
+    transition:
+      background 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.1s ease,
+      border-color 0.15s ease;
+  }
+  
+  .controls button:hover {
+    background: var(--accent-soft);
+    box-shadow: 0 10px 25px rgba(34, 197, 94, 0.35);
+    transform: translateY(-1px);
+  }
+  
+  /* ------------------------------------------------------
+     Main grid + panels
+  ------------------------------------------------------- */
+  
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    gap: 18px;
+  }
+  
+  @media (max-width: 900px) {
+    .layout {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .panel {
+    background: var(--bg-panel);
+    border-radius: var(--radius-card);
+    border: 1px solid var(--border-subtle);
+    padding: 16px 16px 18px;
+    box-shadow: var(--shadow-card);
+    min-height: 260px;
+  }
+  
+  .panel h2 {
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    margin: 0 0 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+  }
+  
+  .subheading {
+    margin-top: 16px;
+  }
+  
+  /* ------------------------------------------------------
+     Tabs (Matchups / Rosters)
+  ------------------------------------------------------- */
+  
+  .top-tabs {
+    display: inline-flex;
+    padding: 4px;
+    background: rgba(15, 23, 42, 0.9);
+    border-radius: var(--radius-pill);
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    margin-bottom: 10px;
+  }
+  
+  .tab-btn {
+    flex: 1;
+    padding: 7px 14px;
+    font-size: var(--font-size-md);
+    background: transparent;
+    color: var(--text-soft);
+    border: none;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      transform 0.1s ease,
+      box-shadow 0.15s ease;
+  }
+  
+  .tab-btn:hover {
+    transform: translateY(-1px);
+  }
+  
+  .tab-btn.active {
+    background: radial-gradient(circle at top left, var(--accent), #15803d);
+    color: #ecfdf5;
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.7);
+  }
+  
+  .tab-panel {
+    display: none;
+  }
+  
+  .tab-panel.active {
+    display: block;
+  }
+  
+  /* ------------------------------------------------------
+     Matchup list
+  ------------------------------------------------------- */
+  
+  #matchups-container {
+    margin-top: 4px;
+  }
+  
+  .matchup-card {
+    position: relative;
+    background: var(--bg-card);
+    border-radius: var(--radius-card-sm);
+    border: 1px solid var(--border-subtle);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.1s ease,
+      background 0.15s ease;
+  }
+  
+  .matchup-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 999px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent-cyan));
+    opacity: 0.7;
+  }
+  
+  .matchup-card:hover {
+    border-color: rgba(34, 197, 94, 0.7);
+    box-shadow: 0 14px 40px rgba(15, 118, 110, 0.35);
+    transform: translateY(-1px);
+  }
+  
+  .matchup-card.selected {
+    border-color: var(--accent);
+    box-shadow: 0 18px 45px rgba(34, 197, 94, 0.5);
+  }
+  
+  .matchup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+  }
+  
+  .matchup-teams {
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+  
+  .matchup-meta {
+    font-size: var(--font-size-xs);
+    color: var(--text-soft);
+  }
+  
+  .matchup-scores {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: var(--font-size-sm);
+  }
+  
+  .matchup-scores span strong {
+    font-variant-numeric: tabular-nums;
+  }
+  
+  /* small “fav” line accent on a winning side if you want */
+  .favorite {
+    border-left: 3px solid var(--accent);
+    padding-left: 9px;
+  }
+  
+  /* Chips */
+  
+  .tag {
+    display: inline-block;
+    border-radius: var(--radius-pill);
+    padding: 2px 8px;
+    font-size: var(--font-size-xs);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-soft);
+    margin-left: 4px;
+  }
+  
+  .tag-favorite {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  
+  .tag-underdog {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  
+  /* ------------------------------------------------------
+     Matchup Detail (player stats panel)
+  ------------------------------------------------------- */
+  
+  #matchup-detail-container {
+    margin-top: 10px;
+    max-height: 360px;
+    overflow: auto;
+    border-radius: 14px;
+    border: 1px solid rgba(31, 41, 55, 0.9);
+    background: radial-gradient(circle at top left,
+        rgba(56, 189, 248, 0.12),
+        rgba(15, 23, 42, 0.98));
+    padding: 8px 10px;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.85);
+  }
+  
+  .detail-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    min-width: 100%;
+  }
+  
+  @media (max-width: 900px) {
+    .detail-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .detail-team-header {
+    padding: 0 6px 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: var(--font-size-sm);
+    color: var(--text-soft);
+  }
+  
+  .detail-team-header .team-name {
+    font-weight: 600;
+    color: var(--text-main);
+  }
+  
+  .detail-team-header .team-score {
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    font-size: var(--font-size-xs);
+  }
+  
+  /* Player tables */
+  
+  .detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-xs);
+  }
+  
+  .detail-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: rgba(15, 23, 42, 0.98);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+    padding: 4px 6px;
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .detail-table tbody tr:nth-child(odd) {
+    background: rgba(15, 23, 42, 0.9);
+  }
+  
+  .detail-table tbody tr:nth-child(even) {
+    background: rgba(15, 23, 42, 0.82);
+  }
+  
+  .detail-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid rgba(15, 23, 42, 1);
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .detail-table td:first-child {
+    width: 32px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  
+  .detail-table td:nth-child(2) {
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .detail-table td:nth-child(n + 3) {
+    text-align: right; /* Pts, Season Avg, Last 5 */
+  }
+  
+/* ------------------------------------------------------
+   ROSTER SELECTOR – Button Grid (replaces <select multiple>)
+------------------------------------------------------- */
+
+.roster-controls {
+    margin-bottom: 10px;
+  }
+  
+  .roster-selector-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+    max-height: 220px;             /* Fixed height with scroll */
+    overflow-y: auto;
+    padding: 8px;
+    background: rgba(2, 6, 23, 0.6);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+  
+    /* Thin, themed scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  
+  .roster-selector-grid::-webkit-scrollbar {
+    width: 6px;
+  }
+  .roster-selector-grid::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .roster-selector-grid::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+    border-radius: 99px;
+  }
+  
+  /* Team “chips” */
+  .roster-select-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-soft);
+    padding: 9px 10px;
+    border-radius: 9px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    text-align: left;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: relative;
+  }
+  
+  .roster-select-btn:hover {
+    background: var(--bg-panel);
+    border-color: var(--text-soft);
+    color: var(--text-main);
+    transform: translateY(-1px);
+  }
+  
+  /* Selected team state */
+  .roster-select-btn.selected {
+    background: rgba(34, 197, 94, 0.16);
+    border-color: var(--accent);
+    color: #f9fafb;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.3);
+    font-weight: 600;
+  }
+  
+  
+  .player-pos {
+    font-weight: 700;
+    font-size: var(--font-size-xs);
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  
+  .player-name {
+    color: #e5e7eb;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .player-team {
+    color: var(--text-soft);
+    text-align: right;
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  
+  /* ------------------------------------------------------
+     Newsletter / odds
+  ------------------------------------------------------- */
+  
+  .newsletter-body {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--text-main);
+    max-width: 100%;
+  }
+  
+  .newsletter-body h3 {
+    font-size: var(--font-size-lg);
+    margin-top: 14px;
+    margin-bottom: 6px;
+  }
+  
+  .newsletter-body p {
+    margin: 6px 0;
+  }
+  
+  /* title odds table */
+  
+  .odds-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: var(--font-size-xs);
+  }
+  
+  .odds-table th,
+  .odds-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  /* ------------------------------------------------------
+     Charts
+  ------------------------------------------------------- */
+  
+  .charts-wrapper {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  
+  .chart-card {
+    background: var(--bg-card-soft);
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    padding: 12px;
+  }
+  
+  .chart-card h3 {
+    font-size: var(--font-size-sm);
+    margin: 0 0 8px;
+    color: var(--text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  
+  canvas {
+    max-width: 100%;
+  }
+  

@@ -3,13 +3,13 @@
 // Data modeling layer for the Sleeper-based playoff hub.
 //
 // Responsibility:
-//   - Take raw Sleeper data (league, users, rosters, matchups, winners bracket)
+//   - Take raw Sleeper data (league, users, rosters, matchups)
 //   - Normalize it into clean "teams" and "matchups" objects
-//   - Build a playoff bracket (semifinals/finals) based on seeds + bracket
+//   - Build playoff matchups based on seeds (4-team bracket)
+//   - Build generic weekly matchups from Sleeper matchup_id
 //
-// No DOM work here. No projections or jokes here.
-// Other modules (projections.js, newsletter.js, index.html) consume this.
-// -----------------------------------------------------------------------------
+// No DOM work here.
+// ----------------------------------------------------------------------------- 
 
 (function () {
     "use strict";
@@ -18,13 +18,14 @@
     // Utility helpers
     // -----------------------
   
-    function safeNumber(value, fallback = 0) {
-      const n = Number(value);
+    function safeNumber(value, fallback) {
+      if (fallback === void 0) fallback = 0;
+      var n = Number(value);
       return Number.isFinite(n) ? n : fallback;
     }
   
     function clone(obj) {
-      return obj == null ? obj : JSON.parse(JSON.stringify(obj));
+      return JSON.parse(JSON.stringify(obj));
     }
   
     // -----------------------
@@ -32,19 +33,19 @@
     // -----------------------
   
     function buildOwnerIndex(users) {
-      const index = {};
-      (users || []).forEach((u) => {
+      var index = {};
+      (users || []).forEach(function (u) {
         if (!u || !u.user_id) return;
-        const displayName =
+        var displayName =
           (u.metadata && u.metadata.team_name) ||
           u.display_name ||
-          `Owner ${u.user_id}`;
+          "Owner " + u.user_id;
   
         index[String(u.user_id)] = {
           userId: String(u.user_id),
-          displayName,
+          displayName: displayName,
           avatar: u.avatar || null,
-          raw: u,
+          raw: u
         };
       });
       return index;
@@ -55,67 +56,66 @@
     // -----------------------
   
     function inferTeamName(roster, owner) {
-      const meta = roster && roster.metadata;
+      var meta = roster && roster.metadata;
       if (meta && typeof meta.team_name === "string" && meta.team_name.trim()) {
         return meta.team_name.trim();
       }
-  
       if (owner && owner.displayName) {
-        return `${owner.displayName}'s Team`;
+        return owner.displayName + "'s Team";
       }
-  
-      return `Roster ${roster && roster.roster_id != null ? roster.roster_id : "?"}`;
+      return "Roster " + (roster.roster_id != null ? roster.roster_id : "?");
     }
   
     /**
      * Build league "teams" (one per roster) keyed by roster_id.
      */
     function buildTeams(league, users, rosters) {
-      const owners = buildOwnerIndex(users);
-      const teamsByRosterId = {};
+      var owners = buildOwnerIndex(users);
+      var teamsByRosterId = {};
   
-      (rosters || []).forEach((r) => {
+      (rosters || []).forEach(function (r) {
         if (!r || typeof r.roster_id === "undefined") return;
-        const rosterId = String(r.roster_id);
-        const owner = owners[String(r.owner_id)] || null;
-        const settings = r.settings || {};
+        var rosterId = String(r.roster_id);
+        var owner = owners[String(r.owner_id)] || null;
+        var settings = r.settings || {};
   
-        const wins = safeNumber(settings.wins);
-        const losses = safeNumber(settings.losses);
-        const ties = safeNumber(settings.ties);
-        const fpts = safeNumber(settings.fpts);
-        const fptsDecimal = safeNumber(settings.fpts_decimal, 0);
-        const pointsFor = fpts + fptsDecimal / 100;
+        var wins = safeNumber(settings.wins);
+        var losses = safeNumber(settings.losses);
+        var ties = safeNumber(settings.ties);
+        var fpts = safeNumber(settings.fpts);
+        var fptsDecimal = safeNumber(settings.fpts_decimal, 0);
+        var pointsFor = fpts + fptsDecimal / 100;
   
-        const seedRaw = settings.playoff_seed;
-        const seed =
+        var seedRaw = settings.playoff_seed;
+        var seed =
           typeof seedRaw === "number" && Number.isFinite(seedRaw)
             ? seedRaw
             : null;
   
-        const teamDisplayName = inferTeamName(r, owner);
+        var teamDisplayName = inferTeamName(r, owner);
   
         teamsByRosterId[rosterId] = {
-          rosterId,
+          rosterId: rosterId,
           ownerId: owner ? owner.userId : null,
           ownerDisplayName: owner ? owner.displayName : "Unknown Owner",
-          teamDisplayName,
-          seed,
+          teamDisplayName: teamDisplayName,
+          seed: seed,
           record: {
-            wins,
-            losses,
-            ties,
-            pointsFor,
-            pointsForRaw: { fpts, fptsDecimal },
+            wins: wins,
+            losses: losses,
+            ties: ties,
+            pointsFor: pointsFor,
+            pointsForRaw: { fpts: fpts, fptsDecimal: fptsDecimal }
           },
           metadata: {
             avatar: owner ? owner.avatar : null,
-            leagueSeason: league && league.season ? String(league.season) : null,
+            leagueSeason:
+              league && league.season ? String(league.season) : null,
             original: {
               roster: clone(r),
-              owner: owner ? clone(owner.raw) : null,
-            },
-          },
+              owner: owner ? clone(owner.raw) : null
+            }
+          }
         };
       });
   
@@ -123,49 +123,52 @@
     }
   
     // -----------------------
-    // Matchups + team-week views
+    // Matchups helpers
     // -----------------------
   
     function indexMatchupsByRosterId(matchups) {
-      const index = {};
-      (matchups || []).forEach((m) => {
+      var index = {};
+      (matchups || []).forEach(function (m) {
         if (!m || typeof m.roster_id === "undefined") return;
         index[String(m.roster_id)] = m;
       });
       return index;
     }
   
+    /**
+     * Build starter entries for a given roster+matchup.
+     *
+     * If playerMap is supplied, it should be:
+     *   { [playerId]: { full_name, position, team, ... } }
+     */
     function buildStarterEntries(roster, matchup, playerMap) {
-      const starters =
-        (matchup && Array.isArray(matchup.starters) && matchup.starters.length
+      var starters =
+        (matchup &&
+          Array.isArray(matchup.starters) &&
+          matchup.starters.length
           ? matchup.starters
           : roster && Array.isArray(roster.starters)
           ? roster.starters
           : []) || [];
   
-      const playersPoints =
+      var playersPoints =
         (matchup && matchup.players_points) ||
         (matchup && matchup.custom_points) ||
         {};
   
-      return starters.map((playerId, idx) => {
-        const pid = String(playerId);
-        const meta =
-          (playerMap && playerMap[pid]) ||
-          (window.__SLEEPER_PLAYER_MAP__ && window.__SLEEPER_PLAYER_MAP__[pid]) ||
-          null;
-        const fantasyPoints = safeNumber(playersPoints[pid], 0);
+      return starters.map(function (playerId, idx) {
+        var pid = String(playerId);
+        var meta = playerMap ? playerMap[pid] : null;
+        var fantasyPoints = safeNumber(playersPoints[pid], 0);
   
         return {
           playerId: pid,
           displayName:
-            meta && meta.full_name
-              ? meta.full_name
-              : pid,
-          position: meta && (meta.position || meta.pos) ? (meta.position || meta.pos) : null,
+            meta && meta.full_name ? meta.full_name : pid,
+          position: meta && meta.position ? meta.position : null,
           nflTeam: meta && meta.team ? meta.team : null,
           slotIndex: idx,
-          fantasyPoints,
+          fantasyPoints: fantasyPoints
         };
       });
     }
@@ -173,295 +176,225 @@
     /**
      * Build a "team in a specific week" view, combining roster + matchup.
      */
-    function buildTeamWeekView({
-      teamsByRosterId,
-      rosters,
-      matchupsByRosterId,
-      rosterId,
-      week,
-      playerMap,
-    }) {
-      const rid = String(rosterId);
-      const baseTeam = teamsByRosterId[rid];
+    function buildTeamWeekView(args) {
+      var teamsByRosterId = args.teamsByRosterId;
+      var rosters = args.rosters;
+      var matchupsByRosterId = args.matchupsByRosterId;
+      var rosterId = args.rosterId;
+      var week = args.week;
+      var playerMap = args.playerMap;
+  
+      var rid = String(rosterId);
+      var baseTeam = teamsByRosterId[rid];
       if (!baseTeam) return null;
   
-      const matchup = matchupsByRosterId[rid] || null;
-      const roster =
-        (rosters || []).find((r) => String(r.roster_id) === rid) || null;
+      var matchup = matchupsByRosterId[rid] || null;
+      var roster =
+        (rosters || []).find(function (r) {
+          return String(r.roster_id) === rid;
+        }) || null;
   
-      const pointsField =
+      var pointsField =
         matchup && typeof matchup.points !== "undefined"
           ? "points"
           : "custom_points";
-      const score =
+      var score =
         matchup && typeof matchup[pointsField] !== "undefined"
           ? safeNumber(matchup[pointsField])
           : 0;
   
-      const starters = buildStarterEntries(roster, matchup, playerMap);
+      var starters = buildStarterEntries(roster, matchup, playerMap);
   
       return {
         team: baseTeam,
         rosterId: rid,
-        week,
-        score,
-        starters,
-        rawMatchup: matchup ? clone(matchup) : null,
+        week: week,
+        score: score,
+        starters: starters,
+        rawMatchup: matchup ? clone(matchup) : null
       };
     }
   
     // -----------------------
-    // League bootstrap
-    // -----------------------
+    // Playoff matchups (4-team bracket)
+  // -----------------------
   
     /**
-     * Convert the fetchLeagueBundle() result into a "leagueState" object
-     * that newsletter.js and other modules can use.
-     */
-    function bootstrapFromSleeper(bundle, config) {
-      const cfg = config || window.LEAGUE_CONFIG || {};
-      const league = bundle.league || {};
-      const users = bundle.users || [];
-      const rosters = bundle.rosters || [];
-      const matchupsByWeek = bundle.matchupsByWeek || {};
-      const winnersBracket = bundle.winnersBracket || [];
-  
-      const teamsByRosterId = buildTeams(league, users, rosters);
-  
-      const weeks = {};
-      Object.entries(matchupsByWeek).forEach(([wkStr, arr]) => {
-        const wk = safeNumber(wkStr, null);
-        if (!wk) return;
-        weeks[wk] = {
-          week: wk,
-          matchups: arr,
-          matchupsByRosterId: indexMatchupsByRosterId(arr),
-        };
-      });
-  
-      const playoff = {
-        winnersBracket,
-        semifinalWeek: cfg.SEMIFINAL_WEEK || null,
-        championshipWeek: cfg.CHAMPIONSHIP_WEEK || null,
-      };
-  
-      const leagueState = {
-        league,
-        users,
-        rosters,
-        teamsByRosterId,
-        weeks,
-        playoff,
-      };
-  
-      // Rough currentWeek default: use semifinalWeek if set, else whatever Sleeper has
-      leagueState.currentWeek =
-        playoff.semifinalWeek ||
-        safeNumber(league.settings && league.settings.matchup_week, null);
-  
-      return leagueState;
-    }
-  
-    // -----------------------
-    // Playoff matchups (semis / finals)
-    // -----------------------
-  
-    /**
-     * Build matchup objects for a given week.
+     * Build playoff semifinals based purely on seeds:
+     *   1 vs 4, 2 vs 3
      *
-     * Works for:
-     *   - Playoff weeks with winners bracket (matchup_id often null, use bracket.t1/t2).
-     *   - Regular-season weeks with matchup_id pairs.
+     * We do NOT rely on Sleeper's matchup_id (which is often null
+     * for upcoming playoff weeks), only on roster.settings.playoff_seed.
      *
-     * Output shape (for each game):
+     * Returns objects shaped so ProjectionEngine.projectMatchup()
+     * can consume them directly:
+     *
      *   {
      *     id,
-     *     roundLabel,
-     *     bestOf,
-     *     week,
-     *     teamA: <teamWeekView>,
-     *     teamB: <teamWeekView>
+     *     roundLabel: "Semifinal",
+     *     bestOf: 1,
+     *     teamA: <teamWeekView for higher seed>,
+     *     teamB: <teamWeekView for lower seed>
      *   }
      */
-     function buildPlayoffMatchups(snapshot, config) {
-        config = config || {};
-        const league = snapshot.league || {};
-        const users = snapshot.users || [];
-        const rosters = snapshot.rosters || [];
-        const matchups = snapshot.matchups || [];
-        const winnersBracket =
-          snapshot.winnersBracket ||
-          (window.__LAST_BUNDLE__ && window.__LAST_BUNDLE__.winnersBracket) ||
-          [];
+    function buildPlayoffMatchups(snapshot, config, options) {
+      config = config || {};
+      options = options || {};
   
-        const teamsByRosterId = buildTeams(league, users, rosters);
-        const matchupsByRosterId = indexMatchupsByRosterId(matchups);
-        const playerMap =
-          typeof window !== "undefined" && window.__SLEEPER_PLAYER_MAP__
-            ? window.__SLEEPER_PLAYER_MAP__
-            : null;
+      var week =
+        options.week ||
+        config.SEMIFINAL_WEEK ||
+        (config.playoff && config.playoff.semifinalWeek) ||
+        null;
+      var playerMap = options.playerMap || null;
   
-        const week =
-          (matchups.length && safeNumber(matchups[0].week, null)) ||
-          (typeof config.SEMIFINAL_WEEK === "number"
-            ? config.SEMIFINAL_WEEK
-            : null);
+      var league = snapshot.league || {};
+      var rosters = snapshot.rosters || [];
+      var users = snapshot.users || [];
+      var matchups = snapshot.matchups || [];
   
-        const result = [];
-  
-        // ---------- Case 1: Winners bracket present (playoffs, often matchup_id=null) ----------
-        if (Array.isArray(winnersBracket) && winnersBracket.length) {
-          winnersBracket.forEach(function (g, idx) {
-            if (!g || !g.t1 || !g.t2) return;
-            if (!matchupsByRosterId[g.t1] || !matchupsByRosterId[g.t2]) return;
-  
-            const twA = buildTeamWeekView({
-              teamsByRosterId: teamsByRosterId,
-              rosters: rosters,
-              matchupsByRosterId: matchupsByRosterId,
-              rosterId: g.t1,
-              week: week,
-              playerMap: playerMap,
-            });
-            const twB = buildTeamWeekView({
-              teamsByRosterId: teamsByRosterId,
-              rosters: rosters,
-              matchupsByRosterId: matchupsByRosterId,
-              rosterId: g.t2,
-              week: week,
-              playerMap: playerMap,
-            });
-  
-            if (!twA || !twB) return;
-  
-            var roundLabel = "Playoffs";
-            if (g.r === 3) roundLabel = "Championship";
-            else if (g.r === 2) roundLabel = "Semifinal";
-  
-            result.push({
-              id:
-                "playoff_" +
-                (week != null ? week : "w") +
-                "_m" +
-                (g.m != null ? g.m : idx + 1),
-              roundLabel: roundLabel,
-              bestOf: 1,
-              week: week,
-              teamA: twA,
-              teamB: twB,
-            });
-          });
-  
-          if (result.length) return result;
-        }
-  
-        // ---------- Case 2: Regular-season style (matchup_id groups) ----------
-        const groups = {};
-        (matchups || []).forEach(function (m) {
-          if (!m || m.matchup_id == null) return;
-          const key = String(m.matchup_id);
-          if (!groups[key]) groups[key] = [];
-          groups[key].push(m);
-        });
-  
-        Object.keys(groups).forEach(function (key) {
-          const group = groups[key];
-          if (!group || !group.length) return;
-  
-          const sorted = group.slice().sort(function (a, b) {
-            return safeNumber(a.roster_id) - safeNumber(b.roster_id);
-          });
-  
-          if (sorted.length < 2) return;
-  
-          const first = sorted[0];
-          const second = sorted[1];
-  
-          const twA = buildTeamWeekView({
-            teamsByRosterId: teamsByRosterId,
-            rosters: rosters,
-            matchupsByRosterId: matchupsByRosterId,
-            rosterId: first.roster_id,
-            week: week,
-            playerMap: playerMap,
-          });
-          const twB = buildTeamWeekView({
-            teamsByRosterId: teamsByRosterId,
-            rosters: rosters,
-            matchupsByRosterId: matchupsByRosterId,
-            rosterId: second.roster_id,
-            week: week,
-            playerMap: playerMap,
-          });
-  
-          if (!twA || !twB) return;
-  
-          result.push({
-            id:
-              "week" +
-              (week != null ? week : "w") +
-              "_m" +
-              key,
-            roundLabel: "Week " + (week != null ? week : "?"),
-            bestOf: 1,
-            week: week,
-            teamA: twA,
-            teamB: twB,
-          });
-        });
-  
-        return result;
+      if (!week) {
+        return [];
       }
   
+      var teamsByRosterId = buildTeams(league, users, rosters);
+      var matchupsByRosterId = indexMatchupsByRosterId(matchups);
+  
+      // Seeded rosters
+      var seeded = (rosters || [])
+        .map(function (r) {
+          var settings = r.settings || {};
+          var seed = safeNumber(settings.playoff_seed, Infinity);
+          return {
+            rosterId: String(r.roster_id),
+            seed: seed
+          };
+        })
+        .filter(function (x) {
+          return Number.isFinite(x.seed);
+        })
+        .sort(function (a, b) {
+          return a.seed - b.seed;
+        });
+  
+      // Assume a 4-team playoff for now.
+      if (seeded.length < 4) {
+        return [];
+      }
+  
+      var pairs = [
+        [seeded[0], seeded[3]], // 1 vs 4
+        [seeded[1], seeded[2]]  // 2 vs 3
+      ];
+  
+      var results = [];
+  
+      pairs.forEach(function (pair, idx) {
+        var high = pair[0];
+        var low = pair[1];
+        if (!high || !low) return;
+  
+        var highTeam = buildTeamWeekView({
+          teamsByRosterId: teamsByRosterId,
+          rosters: rosters,
+          matchupsByRosterId: matchupsByRosterId,
+          rosterId: high.rosterId,
+          week: week,
+          playerMap: playerMap
+        });
+        var lowTeam = buildTeamWeekView({
+          teamsByRosterId: teamsByRosterId,
+          rosters: rosters,
+          matchupsByRosterId: matchupsByRosterId,
+          rosterId: low.rosterId,
+          week: week,
+          playerMap: playerMap
+        });
+  
+        if (!highTeam || !lowTeam) return;
+  
+        results.push({
+          id: "semi" + (idx + 1),
+          roundLabel: "Semifinal",
+          bestOf: 1,
+          teamA: highTeam,
+          teamB: lowTeam
+        });
+      });
+  
+      return results;
+    }
   
     // -----------------------
-    // Generic “all matchups for a week” helper (snapshot-based)
+    // Generic weekly matchups
     // -----------------------
   
-    function buildAllMatchupsForWeek(snapshot, playerMap = null) {
-      const league = snapshot.league || {};
-      const rosters = snapshot.rosters || [];
-      const matchups = snapshot.matchups || [];
-      const users = snapshot.users || [];
+    /**
+     * Generic helper for any given week (not just playoffs).
+     * Groups all rosters that have a VALID matchup_id into paired matchups.
+     *
+     * We explicitly ignore rows with null / non-numeric matchup_id so we
+     * don't invent fake matchups from playoff bye teams.
+     */
+    function buildAllMatchupsForWeek(snapshot, playerMap) {
+      if (playerMap === void 0) playerMap = null;
   
-      const teamsByRosterId = buildTeams(league, users, rosters);
-      const matchupsByRosterId = indexMatchupsByRosterId(matchups);
+      var league = snapshot.league || {};
+      var rosters = snapshot.rosters || [];
+      var matchups = snapshot.matchups || [];
+      var users = snapshot.users || [];
   
-      const groups = {};
-      matchups.forEach((m) => {
-        if (!m || typeof m.matchup_id === "undefined") return;
-        const mId = String(m.matchup_id);
+      if (!matchups.length) {
+        return [];
+      }
+  
+      var teamsByRosterId = buildTeams(league, users, rosters);
+  
+      // Group by matchup_id, skipping invalid ids
+      var groups = {};
+      matchups.forEach(function (m) {
+        if (!m) return;
+        if (m.matchup_id == null || !Number.isFinite(Number(m.matchup_id))) {
+          // Sleeper often uses null for "no matchup" (e.g., byes, future weeks)
+          return;
+        }
+        var mId = String(m.matchup_id);
         if (!groups[mId]) groups[mId] = [];
         groups[mId].push(m);
       });
   
-      const week = safeNumber(matchups[0] && matchups[0].week, null);
-      const result = [];
+      var anyMatchup = matchups[0];
+      var week = safeNumber(anyMatchup && anyMatchup.week, null);
+      var result = [];
+      var matchupsByRosterId = indexMatchupsByRosterId(matchups);
   
-      Object.entries(groups).forEach(([matchupId, entries]) => {
-        const sorted = entries.slice().sort(
-          (a, b) => safeNumber(a.roster_id) - safeNumber(b.roster_id)
-        );
+      Object.keys(groups).forEach(function (matchupId) {
+        var entries = groups[matchupId];
+        if (!entries || !entries.length) return;
   
-        const teamViews = sorted.map((entry) =>
-          buildTeamWeekView({
-            teamsByRosterId,
-            rosters,
-            matchupsByRosterId,
+        var sorted = entries.slice().sort(function (a, b) {
+          return safeNumber(a.roster_id) - safeNumber(b.roster_id);
+        });
+  
+        var teamViews = sorted.map(function (entry) {
+          return buildTeamWeekView({
+            teamsByRosterId: teamsByRosterId,
+            rosters: rosters,
+            matchupsByRosterId: matchupsByRosterId,
             rosterId: entry.roster_id,
-            week,
-            playerMap,
-          })
-        );
+            week: week,
+            playerMap: playerMap
+          });
+        });
   
-        const isBye = teamViews.length === 1;
+        var isBye = teamViews.length === 1;
   
         result.push({
-          id: `week${week}_m${matchupId}`,
-          week,
-          matchupId,
+          id: "week" + week + "_m" + matchupId,
+          week: week,
+          matchupId: matchupId,
           teams: teamViews,
-          isBye,
+          isBye: isBye
         });
       });
   
@@ -473,12 +406,11 @@
     // -----------------------
   
     window.LeagueModels = {
-      buildOwnerIndex,
-      buildTeams,
-      buildTeamWeekView,
-      bootstrapFromSleeper,
-      buildPlayoffMatchups,
-      buildAllMatchupsForWeek,
+      buildOwnerIndex: buildOwnerIndex,
+      buildTeams: buildTeams,
+      buildTeamWeekView: buildTeamWeekView,
+      buildPlayoffMatchups: buildPlayoffMatchups,
+      buildAllMatchupsForWeek: buildAllMatchupsForWeek
     };
   })();
   

@@ -4,322 +4,7 @@
   <meta charset="UTF-8" />
   <title>Dynasty Playoff Hub</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root {
-      --bg: #020617;
-      --bg-panel: #020617;
-      --bg-card: rgba(15, 23, 42, 0.95);
-      --border-subtle: #1f2937;
-      --border-strong: #4b5563;
-      --accent: #22c55e;
-      --accent-soft: rgba(34, 197, 94, 0.16);
-      --text-main: #e5e7eb;
-      --text-soft: #9ca3af;
-      --danger: #f97373;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: radial-gradient(circle at top, #0f172a, #020617 60%);
-      color: var(--text-main);
-      min-height: 100vh;
-    }
-
-    #app {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 16px;
-    }
-
-    .top-bar {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      gap: 8px;
-    }
-
-    .top-bar-title {
-      font-size: 1.4rem;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-    }
-
-    .top-bar-subtitle {
-      font-size: 0.85rem;
-      color: var(--text-soft);
-    }
-
-    .controls {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 0.9rem;
-    }
-
-    .controls select,
-    .controls button {
-      background: #020617;
-      border-radius: 999px;
-      border: 1px solid var(--border-strong);
-      color: var(--text-main);
-      padding: 6px 12px;
-      font-size: 0.85rem;
-    }
-
-    .controls button {
-      cursor: pointer;
-      border-color: var(--accent);
-    }
-
-    .controls button:hover {
-      background: var(--accent-soft);
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
-      gap: 16px;
-    }
-
-    @media (max-width: 900px) {
-      .layout {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .panel {
-      background: var(--bg-panel);
-      border-radius: 16px;
-      border: 1px solid var(--border-subtle);
-      padding: 16px;
-      box-shadow: 0 18px 35px rgba(0, 0, 0, 0.45);
-      min-height: 240px;
-    }
-
-    .panel h2 {
-      font-size: 1rem;
-      font-weight: 600;
-      margin: 0 0 12px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--text-soft);
-    }
-
-    .matchup-card {
-      background: var(--bg-card);
-      border-radius: 14px;
-      border: 1px solid #111827;
-      padding: 12px;
-      margin-bottom: 10px;
-      transition: border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
-    }
-
-    .matchup-card:hover {
-      border-color: var(--accent);
-      transform: translateY(-1px);
-      box-shadow: 0 12px 25px rgba(0, 0, 0, 0.4);
-    }
-
-    .matchup-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 4px;
-    }
-
-    .matchup-teams {
-      font-size: 0.95rem;
-      font-weight: 500;
-    }
-
-    .matchup-meta {
-      font-size: 0.75rem;
-      color: var(--text-soft);
-    }
-
-    .matchup-scores {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 8px;
-      font-size: 0.85rem;
-    }
-
-    .matchup-scores span strong {
-      font-variant-numeric: tabular-nums;
-    }
-
-    .favorite {
-      border-left: 3px solid var(--accent);
-      padding-left: 9px;
-    }
-
-    .newsletter-body {
-      font-size: 0.95rem;
-      line-height: 1.6;
-      color: var(--text-main);
-      max-width: 100%;
-    }
-
-    .newsletter-body h3 {
-      font-size: 1.05rem;
-      margin-top: 16px;
-      margin-bottom: 8px;
-    }
-
-    .newsletter-body p {
-      margin: 8px 0;
-    }
-
-    .odds-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-      font-size: 0.9rem;
-    }
-
-    .odds-table th,
-    .odds-table td {
-      padding: 6px 8px;
-      border-bottom: 1px solid var(--border-subtle);
-      text-align: left;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .tag {
-      display: inline-block;
-      border-radius: 999px;
-      padding: 2px 8px;
-      font-size: 0.75rem;
-      border: 1px solid var(--border-subtle);
-      color: var(--text-soft);
-      margin-left: 4px;
-    }
-
-    .tag-favorite {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    .tag-underdog {
-      border-color: var(--danger);
-      color: var(--danger);
-    }
-
-    .small {
-      font-size: 0.8rem;
-      color: var(--text-soft);
-    }
-
-    .loading {
-      font-size: 0.9rem;
-      color: var(--text-soft);
-    }
-
-    .charts-wrapper {
-      margin-top: 16px;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 16px;
-    }
-
-    .chart-card {
-      background: var(--bg-card);
-      border-radius: 12px;
-      border: 1px solid var(--border-subtle);
-      padding: 12px;
-    }
-
-    .chart-card h3 {
-      font-size: 0.95rem;
-      margin: 0 0 8px;
-      color: var(--text-soft);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-
-    canvas {
-      max-width: 100%;
-    }
-
-    /* --- Tabs + Rosters --- */
-    .top-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-
-    .tab-btn {
-      flex: 1;
-      padding: 8px 12px;
-      font-size: 0.9rem;
-      background: #0f172a;
-      color: var(--text-main);
-      border: 1px solid var(--border-strong);
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-
-    .tab-btn.active {
-      background: var(--accent-soft);
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    .tab-panel {
-      display: none;
-    }
-
-    .tab-panel.active {
-      display: block;
-    }
-
-    .roster-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: 10px;
-      padding: 10px;
-      margin-bottom: 10px;
-    }
-
-    .roster-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-
-    .roster-player {
-      display: flex;
-      justify-content: space-between;
-      padding: 4px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      font-size: 0.9rem;
-    }
-
-    .roster-player:last-child {
-      border-bottom: none;
-    }
-
-    .player-pos {
-      font-weight: 600;
-    }
-
-    .player-name {
-      color: #e5e7eb;
-    }
-
-    .player-team {
-      color: var(--text-soft);
-    }
-  </style>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
@@ -340,39 +25,53 @@
     </header>
 
     <main class="layout">
+      <!-- Left column: Matchups / Rosters / Matchup Detail -->
       <section class="panel">
         <div class="top-tabs">
           <button class="tab-btn active" data-tab="matchups">Matchups</button>
           <button class="tab-btn" data-tab="rosters">Rosters</button>
         </div>
 
+        <!-- Matchups tab -->
         <div id="tab-matchups" class="tab-panel active">
           <h2>Matchups</h2>
           <div id="matchups-container">
-            <div class="loading">Fetching semifinal matchups…</div>
+            <div class="loading">Fetching matchups…</div>
+          </div>
+
+          <h2 class="subheading">Matchup Detail</h2>
+          <div id="matchup-detail-container">
+            <div class="loading">Select a matchup above to view details.</div>
           </div>
         </div>
 
+        <!-- Rosters tab -->
         <div id="tab-rosters" class="tab-panel">
-          <h2>Rosters</h2>
-          <div class="controls" style="margin-bottom: 10px;">
-            <select id="roster-select" multiple size="6" style="width:100%; background:#020617; color:#e5e7eb; border:1px solid #4b5563; border-radius:8px; padding:4px;"></select>
-          </div>
-          <div id="roster-view-container">
-            <div class="loading">Select one or more teams above to view their rosters.</div>
-          </div>
-        </div>
+            <h2>Rosters</h2>
+            <div class="roster-controls">
+              <div id="roster-select" class="roster-selector-grid"></div>
+            </div>
+            <div id="roster-view-container">
+              <div class="loading">Select one or more teams above to view their rosters.</div>
+            </div>
+          </div>          
       </section>
 
+      <!-- Right column: Newsletter + charts -->
       <section class="panel">
         <h2>Newsletter</h2>
         <div id="newsletter-content" class="newsletter-body">
-          <p>As soon as the league data loads, this panel will show the playoff preview, win odds, and title odds for the remaining teams.</p>
-          <p class="small">This page runs entirely in your browser using Sleeper’s public API.</p>
+          <p>
+            As soon as the league data loads, this panel will show the weekly preview (or recap),
+            win odds, and title odds.
+          </p>
+          <p class="small">
+            This page runs entirely in your browser using Sleeper’s public API.
+          </p>
 
           <div class="charts-wrapper">
             <div class="chart-card">
-              <h3>Semifinal Win Odds</h3>
+              <h3>Matchup / Semifinal Win Odds</h3>
               <canvas id="semifinal-odds-chart" height="140"></canvas>
             </div>
             <div class="chart-card">
@@ -389,7 +88,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Load Sleeper player metadata (maps player_id → name/pos/team) -->
-<script>
+  <script>
     (async function preloadSleeperPlayers() {
       try {
         const res = await fetch("https://api.sleeper.app/v1/players/nfl");
@@ -397,8 +96,10 @@
         const map = {};
         for (const [id, p] of Object.entries(data)) {
           map[id] = {
-            full_name: p.full_name || p.first_name + " " + p.last_name,
-            pos: p.position,
+            full_name:
+              p.full_name ||
+              ((p.first_name || "") + " " + (p.last_name || "")).trim(),
+            position: p.position,
             team: p.team,
             color: p.team_color || "#9ca3af",
           };
@@ -410,8 +111,13 @@
         window.__SLEEPER_PLAYER_MAP__ = {};
       }
     })();
-</script>
-    
+  </script>
+
+  <!-- Supabase JS (UMD build) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+  <!-- Phrase client (after supabase, before newsletter.js uses it) -->
+  <script src="phrases.js"></script>
 
   <!-- App scripts -->
   <script src="league_config.js"></script>
@@ -421,123 +127,113 @@
   <script src="charts.js"></script>
   <script src="newsletter.js"></script>
 
-  <!-- Tabs + Roster viewer -->
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // --- tab switcher ---
+      // --- tab switcher (unchanged) ---
       const tabButtons = document.querySelectorAll(".tab-btn");
       const tabPanels = document.querySelectorAll(".tab-panel");
       tabButtons.forEach((btn) => {
         btn.addEventListener("click", () => {
+          const target = btn.getAttribute("data-tab");
           tabButtons.forEach((b) => b.classList.remove("active"));
           tabPanels.forEach((p) => p.classList.remove("active"));
+  
           btn.classList.add("active");
-          const target = btn.getAttribute("data-tab");
           const panel = document.getElementById("tab-" + target);
           if (panel) panel.classList.add("active");
         });
       });
-
-      // --- roster view setup ---
+  
+      // --- roster view setup (NEW) ---
       const rosterSelect = document.getElementById("roster-select");
       const rosterContainer = document.getElementById("roster-view-container");
-
+  
       const interval = setInterval(() => {
         if (window.__LAST_BUNDLE__ && window.__LAST_BUNDLE__.rosters) {
           clearInterval(interval);
           const bundle = window.__LAST_BUNDLE__;
           const users = bundle.users || [];
           const rosters = bundle.rosters || [];
-
+  
           const rosterMap = {};
           rosters.forEach((r) => {
             const u = users.find((x) => x.user_id === r.owner_id);
             const name = u ? u.display_name : "Unknown";
             rosterMap[r.roster_id] = name;
           });
-
+  
+          // Track which teams are currently selected
+          const selectedIds = new Set();
+  
+          // Render clickable buttons instead of <option> elements
           rosterSelect.innerHTML = Object.entries(rosterMap)
-            .map(([id, name]) => `<option value="${id}">${name}</option>`)
+            .map(
+              ([id, name]) =>
+                `<button type="button" class="roster-select-btn" data-id="${id}">${name}</button>`
+            )
             .join("");
-
-          rosterSelect.addEventListener("change", () => {
-            const selected = Array.from(rosterSelect.selectedOptions).map(
-              (opt) => Number(opt.value)
-            );
-            showRosters(selected, rosters, users);
+  
+          // Click handler for toggling selection
+          rosterSelect.addEventListener("click", (e) => {
+            const btn = e.target.closest(".roster-select-btn");
+            if (!btn) return;
+  
+            const id = Number(btn.dataset.id);
+            if (selectedIds.has(id)) {
+              selectedIds.delete(id);
+              btn.classList.remove("selected");
+            } else {
+              selectedIds.add(id);
+              btn.classList.add("selected");
+            }
+  
+            showRosters(Array.from(selectedIds), rosters, users);
           });
-
+  
           function showRosters(ids, rosters, users) {
             if (!ids.length) {
               rosterContainer.innerHTML =
                 '<div class="loading">Select one or more teams above to view their rosters.</div>';
               return;
             }
-
-            const playersMap =
-              (typeof window !== "undefined" && window.__SLEEPER_PLAYER_MAP__) || {};
-
+  
             const allCards = ids
-              .map(function (id) {
-                const roster = rosters.find(function (r) {
-                  return r.roster_id === id;
-                });
-                const user = users.find(function (u) {
-                  return roster && u.user_id === roster.owner_id;
-                });
-                const name = (user && user.display_name) || "Team " + id;
-                const starters = (roster && roster.starters) || [];
-
+              .map((id) => {
+                const roster = rosters.find((r) => r.roster_id === id);
+                const user = users.find((u) => u.user_id === roster?.owner_id);
+                const name = user?.display_name || `Team ${id}`;
+                const starters = roster?.starters || [];
                 const playerList = starters
-                  .map(function (pid) {
-                    const key = String(pid);
-                    const meta = playersMap[key] || {};
-                    const displayName =
-                      meta.full_name ||
-                      (meta.first_name && meta.last_name
-                        ? meta.first_name + " " + meta.last_name
-                        : key);
-                    const pos = meta.pos || meta.position || "";
-                    const team = meta.team || "";
-
-                    return (
-                      '<div class="roster-player">' +
-                      '<span class="player-pos">' +
-                      (pos || "") +
-                      "</span>" +
-                      '<span class="player-name">' +
-                      displayName +
-                      "</span>" +
-                      '<span class="player-team">' +
-                      (team || "") +
-                      "</span>" +
-                      "</div>"
-                    );
+                  .map((pid) => {
+                    const meta = window.__SLEEPER_PLAYER_MAP__?.[pid];
+                    const fullName = meta?.full_name || pid;
+                    const pos = meta?.position || "";
+                    const team = meta?.team || "";
+                    return `
+                      <div class="roster-player">
+                        <span class="player-pos">${pos}</span>
+                        <span class="player-name">${fullName}</span>
+                        <span class="player-team">${team}</span>
+                      </div>`;
                   })
                   .join("");
-
-                return (
-                  '<div class="roster-card">' +
-                  '<div class="roster-header">' +
-                  "<strong>" +
-                  name +
-                  "</strong>" +
-                  '<span class="small">Roster ID: ' +
-                  id +
-                  "</span>" +
-                  "</div>" +
-                  (playerList || "<p class='small'>No starters listed</p>") +
-                  "</div>"
-                );
+  
+                return `
+                  <div class="roster-card">
+                    <div class="roster-header">
+                      <strong>${name}</strong>
+                      <span class="small">Roster ID: ${id}</span>
+                    </div>
+                    ${playerList || "<p class='small'>No starters listed</p>"}
+                  </div>`;
               })
               .join("");
-
+  
             rosterContainer.innerHTML = allCards;
           }
-
         }
       }, 500);
     });
-  </script>
+  </script>  
 </body>
 </html>
