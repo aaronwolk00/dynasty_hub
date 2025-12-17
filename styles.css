@@ -1,5 +1,5 @@
 /* ------------------------------------------------------
-   Design Tokens
+   DESIGN TOKENS
 ------------------------------------------------------- */
 
 :root {
@@ -38,7 +38,7 @@
   }
   
   /* ------------------------------------------------------
-     Global reset / base
+     GLOBAL RESET / BASE
   ------------------------------------------------------- */
   
   *,
@@ -59,7 +59,7 @@
     min-height: 100vh;
   }
   
-  /* Utility text styles */
+  /* Utilities */
   
   .small {
     font-size: var(--font-size-xs);
@@ -72,7 +72,7 @@
   }
   
   /* ------------------------------------------------------
-     Shell layout
+     APP SHELL
   ------------------------------------------------------- */
   
   #app {
@@ -110,6 +110,12 @@
     font-size: var(--font-size-md);
   }
   
+  .controls label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
   .controls select,
   .controls button {
     background: #020617;
@@ -141,19 +147,11 @@
   }
   
   /* ------------------------------------------------------
-     Main grid + panels
+     MAIN PANEL
   ------------------------------------------------------- */
   
   .layout {
-    display: grid;
-    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-    gap: 18px;
-  }
-  
-  @media (max-width: 900px) {
-    .layout {
-      grid-template-columns: 1fr;
-    }
+    display: block;
   }
   
   .panel {
@@ -179,7 +177,7 @@
   }
   
   /* ------------------------------------------------------
-     Tabs (Matchups / Rosters)
+     TABS
   ------------------------------------------------------- */
   
   .top-tabs {
@@ -189,6 +187,7 @@
     border-radius: var(--radius-pill);
     border: 1px solid rgba(55, 65, 81, 0.9);
     margin-bottom: 10px;
+    gap: 2px;
   }
   
   .tab-btn {
@@ -226,20 +225,22 @@
   }
   
   /* ------------------------------------------------------
-     Matchup list
+     MATCHUP LIST
   ------------------------------------------------------- */
   
   #matchups-container {
     margin-top: 4px;
   }
   
+  /* Card shell */
+  
   .matchup-card {
     position: relative;
     background: var(--bg-card);
     border-radius: var(--radius-card-sm);
     border: 1px solid var(--border-subtle);
-    padding: 10px 12px;
-    margin-bottom: 8px;
+    padding: 10px 14px 12px;
+    margin-bottom: 10px;
     cursor: pointer;
     transition:
       border-color 0.15s ease,
@@ -252,8 +253,8 @@
     content: "";
     position: absolute;
     left: 0;
-    top: 6px;
-    bottom: 6px;
+    top: 8px;
+    bottom: 8px;
     width: 3px;
     border-radius: 999px;
     background: linear-gradient(to bottom, var(--accent), var(--accent-cyan));
@@ -288,21 +289,59 @@
     color: var(--text-soft);
   }
   
-  .matchup-scores {
+  /* Two-side score row */
+  
+  .matchup-scores-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 4px;
+  }
+  
+  .matchup-score-side {
     display: flex;
-    justify-content: space-between;
-    margin-top: 6px;
-    font-size: var(--font-size-sm);
+    flex-direction: column;
+    gap: 2px;
   }
   
-  .matchup-scores span strong {
+  .matchup-score-line {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  
+  .matchup-score-main {
     font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 0.95rem;
   }
   
-  /* small “fav” line accent on a winning side if you want */
-  .favorite {
-    border-left: 3px solid var(--accent);
-    padding-left: 9px;
+  .matchup-score-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-soft);
+  }
+  
+  .matchup-score-side.winner .matchup-score-main {
+    color: var(--accent);
+    text-shadow: 0 0 12px rgba(34, 197, 94, 0.35);
+  }
+  
+  .matchup-score-side.loser .matchup-score-main {
+    color: var(--text-faint);
+  }
+  
+  .matchup-score-range {
+    color: var(--text-soft);
+  }
+  
+  .matchup-chip-row {
+    margin-top: 2px;
+  }
+  
+  .matchup-meta-bottom {
+    margin-top: 6px;
   }
   
   /* Chips */
@@ -328,7 +367,7 @@
   }
   
   /* ------------------------------------------------------
-     Matchup Detail (player stats panel)
+     MATCHUP DETAIL (PLAYER STATS)
   ------------------------------------------------------- */
   
   #matchup-detail-container {
@@ -337,9 +376,11 @@
     overflow: auto;
     border-radius: 14px;
     border: 1px solid rgba(31, 41, 55, 0.9);
-    background: radial-gradient(circle at top left,
-        rgba(56, 189, 248, 0.12),
-        rgba(15, 23, 42, 0.98));
+    background: radial-gradient(
+      circle at top left,
+      rgba(56, 189, 248, 0.12),
+      rgba(15, 23, 42, 0.98)
+    );
     padding: 8px 10px;
     box-shadow: 0 16px 32px rgba(15, 23, 42, 0.85);
   }
@@ -398,6 +439,20 @@
     font-variant-numeric: tabular-nums;
   }
   
+  /* Column toggle affordance */
+  
+  .detail-table th[data-col] {
+    cursor: pointer;
+  }
+  
+  .detail-table th[data-col]:hover {
+    color: var(--accent);
+  }
+  
+  .detail-table .col-hidden {
+    display: none;
+  }
+  
   .detail-table tbody tr:nth-child(odd) {
     background: rgba(15, 23, 42, 0.9);
   }
@@ -427,14 +482,14 @@
   }
   
   .detail-table td:nth-child(n + 3) {
-    text-align: right; /* Pts, Season Avg, Last 5 */
+    text-align: right;
   }
   
-/* ------------------------------------------------------
-   ROSTER SELECTOR – Button Grid (replaces <select multiple>)
-------------------------------------------------------- */
-
-.roster-controls {
+  /* ------------------------------------------------------
+     ROSTER SELECTOR – BUTTON GRID
+  ------------------------------------------------------- */
+  
+  .roster-controls {
     margin-bottom: 10px;
   }
   
@@ -442,14 +497,13 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 8px;
-    max-height: 220px;             /* Fixed height with scroll */
+    max-height: 220px;
     overflow-y: auto;
     padding: 8px;
     background: rgba(2, 6, 23, 0.6);
     border: 1px solid var(--border-subtle);
     border-radius: 12px;
   
-    /* Thin, themed scrollbar */
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;
   }
@@ -466,6 +520,7 @@
   }
   
   /* Team “chips” */
+  
   .roster-select-btn {
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
@@ -489,7 +544,6 @@
     transform: translateY(-1px);
   }
   
-  /* Selected team state */
   .roster-select-btn.selected {
     background: rgba(34, 197, 94, 0.16);
     border-color: var(--accent);
@@ -498,6 +552,39 @@
     font-weight: 600;
   }
   
+  /* Roster cards */
+  
+  #roster-view-container {
+    margin-top: 10px;
+  }
+  
+  .roster-card {
+    background: var(--bg-card-soft);
+    border-radius: 14px;
+    border: 1px solid var(--border-subtle);
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+  
+  .roster-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+  
+  .roster-header strong {
+    font-size: var(--font-size-md);
+  }
+  
+  .roster-player {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: center;
+    font-size: var(--font-size-xs);
+    padding: 3px 0;
+  }
   
   .player-pos {
     font-weight: 700;
@@ -522,28 +609,239 @@
     letter-spacing: 0.04em;
   }
   
+  /* Optional KTC value chip */
+  
+  .ktc-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    margin-left: 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    font-size: 0.7rem;
+    color: var(--accent);
+    background: rgba(34, 197, 94, 0.07);
+    font-variant-numeric: tabular-nums;
+  }
+  
   /* ------------------------------------------------------
-     Newsletter / odds
+     SEASON OVERVIEW
+  ------------------------------------------------------- */
+  
+  .season-overview {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr);
+    gap: 14px;
+  }
+  
+  @media (max-width: 900px) {
+    .season-overview {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .season-subheading {
+    font-size: var(--font-size-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-soft);
+    margin: 0 0 6px;
+  }
+  
+  /* Standings */
+  
+  .season-standings-container {
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-card-soft);
+    padding: 8px 10px;
+  }
+  
+  .season-standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-xs);
+  }
+  
+  .season-standings-table th,
+  .season-standings-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.85);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .season-standings-table th:first-child,
+  .season-standings-table td:first-child {
+    text-align: left;
+    width: 30px;
+  }
+  
+  .season-standings-table th:nth-child(2),
+  .season-standings-table td:nth-child(2) {
+    text-align: left;
+  }
+  
+  .season-standings-table thead th {
+    background: rgba(15, 23, 42, 0.98);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  
+  .season-standings-table tbody tr:nth-child(odd) {
+    background: rgba(15, 23, 42, 0.9);
+  }
+  
+  .season-standings-table tbody tr:nth-child(even) {
+    background: rgba(15, 23, 42, 0.8);
+  }
+  
+  .season-standings-table tbody tr:hover {
+    background: rgba(34, 197, 94, 0.08);
+  }
+  
+  .season-metrics-container {
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-card-soft);
+    padding: 10px 12px;
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+  }
+  
+  .season-metrics-container p {
+    margin: 4px 0;
+  }
+  
+  /* ------------------------------------------------------
+     NEWSLETTER – MATCHUPS + ODDS
   ------------------------------------------------------- */
   
   .newsletter-body {
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: var(--text-main);
-    max-width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
   }
   
-  .newsletter-body h3 {
-    font-size: var(--font-size-lg);
+  .newsletter-week-header {
+    margin-bottom: 10px;
+  }
+  
+  .newsletter-week-title {
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-soft);
+  }
+  
+  .newsletter-week-subtitle {
+    margin-top: 4px;
+    font-size: var(--font-size-sm);
+    color: var(--text-soft);
+  }
+  
+  /* Matchup cards list */
+  
+  .newsletter-matchups-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  
+  .newsletter-card {
+    background: var(--bg-card-soft);
+    border-radius: 14px;
+    border: 1px solid var(--border-subtle);
+    padding: 10px 12px 12px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  }
+  
+  .newsletter-matchup-card .nm-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  
+  .nm-teams {
+    font-size: var(--font-size-md);
+    font-weight: 500;
+  }
+  
+  .nm-vs {
+    font-weight: 400;
+    color: var(--text-soft);
+  }
+  
+  .nm-meta {
+    font-size: var(--font-size-xs);
+    color: var(--text-soft);
+    margin-bottom: 4px;
+  }
+  
+  .newsletter-matchup-card p {
+    margin: 2px 0;
+  }
+  
+  .nm-final-line {
+    font-size: var(--font-size-sm);
+  }
+  
+  .nm-final-line .label {
+    font-weight: 600;
+    margin-right: 4px;
+  }
+  
+  .nm-recap {
+    font-size: var(--font-size-sm);
+    color: var(--text-soft);
+  }
+  
+  /* Small pill tags for context */
+  
+  .nm-tag {
+    border-radius: var(--radius-pill);
+    padding: 2px 10px;
+    font-size: var(--font-size-xs);
+    border: 1px solid var(--border-strong);
+    color: var(--text-soft);
+    white-space: nowrap;
+  }
+  
+  .nm-tag.close {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+  }
+  
+  .nm-tag.blowout {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  
+  .nm-tag.track {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  
+  /* Championship odds card */
+  
+  .newsletter-champ-card {
     margin-top: 14px;
-    margin-bottom: 6px;
   }
   
-  .newsletter-body p {
-    margin: 6px 0;
+  .newsletter-champ-card h3 {
+    margin: 0 0 6px;
+    font-size: var(--font-size-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-soft);
   }
   
-  /* title odds table */
+  /* Odds table */
   
   .odds-table {
     width: 100%;
@@ -560,33 +858,183 @@
     font-variant-numeric: tabular-nums;
   }
   
-  /* ------------------------------------------------------
-     Charts
-  ------------------------------------------------------- */
+  /* Newsletter charts row (SEMIS + TITLE ODDS) */
   
-  .charts-wrapper {
-    margin-top: 16px;
+  .newsletter-charts-row {
+    margin-top: 18px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
   }
   
-  .chart-card {
-    background: var(--bg-card-soft);
-    border-radius: 12px;
-    border: 1px solid var(--border-subtle);
-    padding: 12px;
+  .newsletter-charts-row .chart-card {
+    height: 220px;
+    display: flex;
+    flex-direction: column;
   }
   
-  .chart-card h3 {
+  .newsletter-charts-row .chart-card h3 {
     font-size: var(--font-size-sm);
-    margin: 0 0 8px;
+    margin: 0 0 6px;
     color: var(--text-soft);
     text-transform: uppercase;
     letter-spacing: 0.06em;
   }
   
-  canvas {
-    max-width: 100%;
+  .newsletter-charts-row canvas {
+    flex: 1 1 auto;
+    width: 100% !important;
+    height: 100% !important; /* keeps Week 16 cards from stretching page */
   }
+  
+  /* ------------------------------------------------------
+     INSIGHTS
+  ------------------------------------------------------- */
+  
+  .insights-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-size-xs);
+    color: var(--text-soft);
+    margin-bottom: 10px;
+  }
+  
+  .insights-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-cyan));
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.45);
+  }
+  
+  /* Grid of insight cards */
+  
+  .insights-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 14px;
+    margin-top: 4px;
+  }
+  
+  @media (max-width: 1000px) {
+    .insights-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .insight-card {
+    background: var(--bg-card-soft);
+    border-radius: 14px;
+    border: 1px solid var(--border-subtle);
+    padding: 10px 12px 12px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  }
+  
+  .insight-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 8px;
+  }
+  
+  .insight-card-header h3 {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-soft);
+  }
+  
+  .insight-card-wide {
+    grid-column: 1 / -1;
+  }
+  
+  /* Insights table */
+  
+  .insights-table-wrapper {
+    max-height: 260px;
+    overflow-y: auto;
+    margin-top: 4px;
+  
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  
+  .insights-table-wrapper::-webkit-scrollbar {
+    width: 6px;
+  }
+  .insights-table-wrapper::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .insights-table-wrapper::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+    border-radius: 99px;
+  }
+  
+  .insights-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-xs);
+  }
+  
+  .insights-table th,
+  .insights-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.85);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  
+  .insights-table th:first-child,
+  .insights-table td:first-child {
+    text-align: left;
+  }
+  
+  .insights-table thead th {
+    background: rgba(15, 23, 42, 0.98);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  
+  .insights-table tbody tr:nth-child(odd) {
+    background: rgba(15, 23, 42, 0.9);
+  }
+  
+  .insights-table tbody tr:nth-child(even) {
+    background: rgba(15, 23, 42, 0.8);
+  }
+  
+  .insights-table tbody tr:hover {
+    background: rgba(34, 197, 94, 0.08);
+  }
+  
+  /* ------------------------------------------------------
+     GENERIC CHART CARDS
+  ------------------------------------------------------- */
+  
+  .chart-card {
+    background: var(--bg-card-soft);
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .chart-card h3 {
+    font-size: var(--font-size-sm);
+    margin: 0 0 6px;
+    color: var(--text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  
+  .chart-card canvas {
+    flex: 1 1 auto;
+    width: 100% !important;
+  }
+  
+  /* Let non-newsletter charts control their height via inline style */
   

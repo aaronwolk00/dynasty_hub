@@ -6,6 +6,7 @@
 // Other scripts will:
 //   - Read LEAGUE_ID to know which league to query
 //   - Use SEMIFINAL_WEEK / CHAMPIONSHIP_WEEK to map bracket rounds to weeks
+//   - Read PHRASE_CONFIG for Supabase-based recap phrases
 //   - Read ui.* for small front-end preferences
 // -----------------------------------------------------------------------------
 
@@ -13,17 +14,38 @@
     "use strict";
   
     const LEAGUE_CONFIG = {
-      // Your Sleeper league ID
+      // -------------------------------------------------------------------------
+      // Core Sleeper league info
+      // -------------------------------------------------------------------------
       LEAGUE_ID: "1180559121900638208",
   
-      // Postseason structure for this specific season
+      // -------------------------------------------------------------------------
+      // Phrase / Supabase NLG config
+      //
+      // phrases.js expects this shape:
+      //   LEAGUE_CONFIG.PHRASE_CONFIG.url
+      //   LEAGUE_CONFIG.PHRASE_CONFIG.anonKey
+      // -------------------------------------------------------------------------
+      PHRASE_CONFIG: {
+        url: "https://mugfsmqcrkfsehdyoruy.supabase.co",
+        anonKey: "sb_publishable_z6H9o_SOKq4VngF2JD3Peg_5NmwjMfW",
+      },
+  
+      // -------------------------------------------------------------------------
+      // Playoff structure
+      // -------------------------------------------------------------------------
       SEMIFINAL_WEEK: 16,
       CHAMPIONSHIP_WEEK: 17,
   
+      // -------------------------------------------------------------------------
+      // Caching / performance
+      // -------------------------------------------------------------------------
       // Optional cache TTL (ms) for Sleeper API responses
       CACHE_TTL_MS: 2 * 60 * 1000, // 2 minutes
   
+      // -------------------------------------------------------------------------
       // UI preferences for the front-end
+      // -------------------------------------------------------------------------
       ui: {
         darkMode: true,
         // whether to display IDP/defensive players in shared views
