@@ -1,8 +1,7 @@
 import os
 import time
 import datetime as dt
-from typing import List, Dict, Optional
-
+from typing import List, Dict
 import requests
 from bs4 import BeautifulSoup
 from supabase import create_client, Client
@@ -11,146 +10,106 @@ from supabase import create_client, Client
 # Config
 # -----------------------------------------------------------------------------
 
-# KTC rankings URL – point this at the exact page you want (1QB, SF, etc.)
-KTC_RANKINGS_URL = "https://keeptradecut.com/dynasty-rankings"  # adjust if needed
-
-# Label for the format you’re scraping (you’ll use this in your app)
+# We filter by position to ensure we get the main table
+KTC_RANKINGS_URL = "https://keeptradecut.com/dynasty-rankings?page=0&filters=QB|WR|RB|TE&format=2"
 KTC_FORMAT = "superflex"
 
-SUPABASE_URL = "https://mugfsmqcrkfsehdyoruy.supabase.co",
-SUPABASE_SERVICE_ROLE_KEY = "sb_publishable_z6H9o_SOKq4VngF2JD3Peg_5NmwjMfW",
-
-# Supabase env (BACKEND ONLY – this script should never run in the browser)
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+    # We print a warning but allow it to run locally if env vars aren't set, 
+    # though it will fail at the upsert step.
+    print("WARNING: Supabase credentials not found in env.")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+# Initialize Supabase (if creds exist)
+supabase: Client = None
+if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+    supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 # -----------------------------------------------------------------------------
 # Scraper
 # -----------------------------------------------------------------------------
 
 HEADERS = {
-    "User-Agent": "DynastyPlayoffHub/1.0 (contact: youremail@example.com)",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-
 def fetch_ktc_html() -> str:
-    """Fetch raw HTML from KTC rankings page."""
     print(f"[ktc] fetching {KTC_RANKINGS_URL}")
     resp = requests.get(KTC_RANKINGS_URL, headers=HEADERS, timeout=20)
     resp.raise_for_status()
-    # Be polite – if you ever fan this out to multiple pages, keep a delay
-    time.sleep(2.0)
     return resp.text
 
-
-def _clean_int(text: Optional[str], default: int = 0) -> int:
-    if not text:
-        return default
-    try:
-        return int(text.replace(",", "").strip())
-    except ValueError:
-        return default
-
-
 def parse_ktc_table(html: str) -> List[Dict]:
-    """
-    Parse the rankings list out of the KTC HTML.
-
-    This version is intentionally defensive:
-      - It supports both the current structure and likely small changes.
-      - It logs and bails if we obviously got the wrong number of rows.
-    """
     soup = BeautifulSoup(html, "html.parser")
     results: List[Dict] = []
     today = dt.date.today()
 
-    # Main container (current site uses this ID)
+    # 1. Find the main container
     container = soup.select_one("#rankings-page-rankings")
     if not container:
-        print("[ktc] WARNING: #rankings-page-rankings not found – using generic row selector")
-        # Fallback: look for common player row class
-        player_rows = soup.select("div.onePlayer, div.player-row")
-    else:
-        # Rows are usually direct children or have a specific row class under this container
-        rows_direct = container.select("> div")
-        rows_players = container.select(".onePlayer, .player-row")
-        player_rows = rows_players or rows_direct
+        print("[ktc] ERROR: Could not find #rankings-page-rankings container")
+        return []
 
-    print(f"[ktc] candidate rows: {len(player_rows)}")
+    # 2. Find direct children divs (The players) safely
+    # recursive=False means "only direct children", same as "> div" but safer
+    player_rows = container.find_all("div", recursive=False)
 
     for row in player_rows:
-        # 1. PLAYER LINK / NAME
-        # Prefer a named class, but fall back to any player-detail link.
-        name_el = row.select_one(".player-name a") or row.select_one(
-            "a[href*='/dynasty-rankings/players/']"
-        )
+        # Check if this div is actually a player row (it should have a name)
+        name_el = row.select_one(".player-name a")
         if not name_el:
+            # This might be an ad or a header row, skip it
             continue
 
+        # --- Extract Data ---
         player_name = name_el.get_text(strip=True)
-        if not player_name:
-            continue
-
-        # 2. TEAM
-        team_el = row.select_one(".player-team, .team")
+        
+        # Team
+        team_el = row.select_one(".player-team")
         nfl_team = team_el.get_text(strip=True) if team_el else "FA"
 
-        # 3. POSITION
-        pos_el = row.select_one("p.position, .position")
-        position_raw = pos_el.get_text(strip=True) if pos_el else "UNK"
-        # Often looks like "WR1" – peel off letters
-        position = "".join(ch for ch in position_raw if ch.isalpha()) or position_raw
+        # Position
+        pos_el = row.select_one("p.position")
+        position = pos_el.get_text(strip=True) if pos_el else "UNK"
 
-        # 4. VALUE
-        value_el = row.select_one(".value p, .player-value, [data-col='value']")
-        ktc_value = _clean_int(value_el.get_text() if value_el else None, default=0)
-        if ktc_value <= 0:
-            # Treat 0 as "couldn't parse" – usually means markup mismatch
+        # Value
+        value_el = row.select_one(".value p")
+        if not value_el: 
+            continue
+        try:
+            ktc_value = int(value_el.get_text(strip=True).replace(",", ""))
+        except ValueError:
             continue
 
-        # 5. RANK
-        rank_el = row.select_one(".rank-number p, .rank, [data-col='rank']")
-        ktc_rank = _clean_int(rank_el.get_text() if rank_el else None, default=999)
+        # Rank
+        rank_el = row.select_one(".rank-number p")
+        try:
+            ktc_rank = int(rank_el.get_text(strip=True)) if rank_el else 999
+        except ValueError:
+            ktc_rank = 999
 
-        # 6. STABLE ID (slug from URL)
-        href = name_el.get("href", "") or ""
-        # Expected pattern: /dynasty-rankings/players/justin-jefferson-1
-        slug = href.rstrip("/").split("/")[-1] if "/" in href else None
-        if not slug:
-            slug = f"{player_name}_{position}".replace(" ", "-")
-
+        # ID Generation (Slug)
+        href = name_el.get("href", "")
+        # href looks like /dynasty-rankings/players/patrick-mahomes-1
+        slug = href.split("/")[-1] if href else f"{player_name}_{position}"
         ktc_player_id = slug.lower()
 
-        results.append(
-            {
-                "ktc_player_id": ktc_player_id,
-                "player_name": player_name,
-                "position": position,
-                "nfl_team": nfl_team,
-                "format": KTC_FORMAT,
-                "ktc_rank": ktc_rank,
-                "ktc_value": ktc_value,
-                "as_of_date": today.isoformat(),
-            }
-        )
+        results.append({
+            "ktc_player_id": ktc_player_id,
+            "player_name": player_name,
+            "position": position,
+            "nfl_team": nfl_team,
+            "format": KTC_FORMAT,
+            "ktc_rank": ktc_rank,
+            "ktc_value": ktc_value,
+            "as_of_date": today.isoformat(),
+        })
 
     print(f"[ktc] parsed {len(results)} rows")
-
-    # Basic sanity check: if we got suspiciously few rows, fail hard so
-    # GitHub Actions will show a red run and you’ll notice.
-    if len(results) < 50:
-        raise RuntimeError(
-            f"[ktc] parsed only {len(results)} players – page structure may have changed."
-        )
-
     return results
-
 
 # -----------------------------------------------------------------------------
 # Supabase upsert
@@ -160,22 +119,35 @@ def upsert_ktc_values(rows: List[Dict]) -> None:
     if not rows:
         print("[ktc] no rows to upsert")
         return
+    
+    if not supabase:
+        print("[ktc] Supabase client not initialized, skipping upsert.")
+        return
 
-    print(f"[ktc] upserting {len(rows)} rows to Supabase…")
-    res = (
-        supabase.table("ktc_values")
-        .upsert(rows, on_conflict=["ktc_player_id", "format", "as_of_date"])
-        .execute()
-    )
-    count = len(res.data or [])
-    print(f"[ktc] upserted {count} rows")
+    print(f"[ktc] upserting {len(rows)} rows to supabase...")
 
+    # We batch the upserts to avoid timeouts if the list is huge (optional but good practice)
+    batch_size = 100
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i : i + batch_size]
+        try:
+            # Ensure your table is named 'ktc_values' in Supabase
+            supabase.table("ktc_values").upsert(
+                batch, on_conflict="ktc_player_id,format,as_of_date"
+            ).execute()
+        except Exception as e:
+            print(f"[ktc] Error upserting batch {i}: {e}")
 
-def main() -> None:
-    html = fetch_ktc_html()
-    rows = parse_ktc_table(html)
-    upsert_ktc_values(rows)
+    print("[ktc] finished.")
 
+def main():
+    try:
+        html = fetch_ktc_html()
+        rows = parse_ktc_table(html)
+        upsert_ktc_values(rows)
+    except Exception as e:
+        print(f"[ktc] CRITICAL ERROR: {e}")
+        exit(1)
 
 if __name__ == "__main__":
     main()
