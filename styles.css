@@ -49,6 +49,8 @@
     box-sizing: border-box;
   }
   
+  html { height: 100%; }
+  
   body {
     margin: 0;
     font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
@@ -59,11 +61,10 @@
       linear-gradient(to bottom, var(--bg-gradient-top), var(--bg-gradient-bottom));
     color: var(--text-main);
     min-height: 100vh;
+    overflow: auto; /* IMPORTANT: do not lock the whole app */
   }
   
-  a {
-    color: inherit;
-  }
+  a { color: inherit; }
   
   .small {
     font-size: var(--font-size-xs);
@@ -94,7 +95,7 @@
   
   #app {
     max-width: 1500px;
-    margin: 24px auto 44px;
+    margin: 16px auto 28px; /* tightened to fit more above the fold */
     padding: 0 20px;
   }
   
@@ -103,7 +104,7 @@
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
     gap: 10px;
   }
   
@@ -145,9 +146,7 @@
     font-size: var(--font-size-sm);
   }
   
-  .controls select {
-    cursor: pointer;
-  }
+  .controls select { cursor: pointer; }
   
   .controls button {
     cursor: pointer;
@@ -169,18 +168,17 @@
      MAIN PANEL
   ------------------------------------------------------- */
   
-  .layout {
-    display: block;
-  }
+  .layout { display: block; }
   
   .panel {
     background: var(--bg-panel);
     border-radius: var(--radius-card);
     border: 1px solid var(--border-subtle);
-    padding: 16px 16px 18px;
+    padding: 14px 14px 16px; /* tightened */
     box-shadow: var(--shadow-panel);
     min-height: 260px;
     backdrop-filter: blur(10px);
+    position: relative;
   }
   
   .panel h2 {
@@ -192,9 +190,7 @@
     color: var(--text-soft);
   }
   
-  .subheading {
-    margin-top: 16px;
-  }
+  .subheading { margin-top: 16px; }
   
   /* Section header row (newspaper vibe) */
   .section-row {
@@ -236,6 +232,11 @@
     border: 1px solid rgba(55, 65, 81, 0.85);
     margin-bottom: 10px;
     gap: 2px;
+  
+    /* keep clickable + visible if content scrolls underneath */
+    position: sticky;
+    top: 0;
+    z-index: 50;
   }
   
   .tab-btn {
@@ -254,9 +255,7 @@
       box-shadow 0.15s ease;
   }
   
-  .tab-btn:hover {
-    transform: translateY(-1px);
-  }
+  .tab-btn:hover { transform: translateY(-1px); }
   
   .tab-btn.active {
     background: radial-gradient(circle at top left, var(--accent), #15803d);
@@ -264,142 +263,34 @@
     box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.7);
   }
   
-  .tab-panel {
-    display: none;
-  }
-  
-  .tab-panel.active {
-    display: block;
-  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
   
   /* ------------------------------------------------------
-     WEEK BRIEF (NEW)
+     COMMON UI (kicker / ghost button / segmented)
   ------------------------------------------------------- */
   
-  .week-brief {
-    background: rgba(15, 23, 42, 0.72);
-    border: 1px solid rgba(55, 65, 81, 0.6);
-    border-radius: 14px;
-    padding: 10px 12px;
-    margin: 10px 0 12px;
-    box-shadow: var(--shadow-soft);
-  }
-  
-  .week-brief-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-  
-  .week-brief-kicker {
-    font-size: 0.72rem;
-    letter-spacing: 0.16em;
+  .kicker {
+    font-size: 0.7rem;
     text-transform: uppercase;
+    letter-spacing: 0.12em;
     color: var(--text-soft);
   }
   
-  .week-brief-title {
-    font-weight: 600;
-    margin-top: 3px;
-  }
-  
-  .week-brief-toggle {
+  .ghost-btn {
     background: transparent;
-    border: 1px solid rgba(55, 65, 81, 0.9);
-    color: var(--text-main);
     border-radius: 999px;
-    padding: 6px 10px;
-    cursor: pointer;
-    transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
-    white-space: nowrap;
-  }
-  
-  .week-brief-toggle:hover {
-    transform: translateY(-1px);
-    background: rgba(34, 197, 94, 0.08);
-    border-color: rgba(34, 197, 94, 0.45);
-  }
-  
-  .week-brief-body {
-    margin-top: 8px;
-    color: var(--text-soft);
-    display: none; /* collapsed by default */
-  }
-  
-  .week-brief.open .week-brief-body {
-    display: block;
-  }
-  
-  /* ------------------------------------------------------
-     NEWSLETTER LAYOUT (NEW)
-  ------------------------------------------------------- */
-  
-  .newsletter-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 420px;
-    gap: 12px;
-    align-items: start;
-  }
-  
-  @media (max-width: 1100px) {
-    .newsletter-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-  
-  .newsletter-left {
-    min-width: 0;
-  }
-  
-  .newsletter-right {
-    min-width: 0;
-  }
-  
-  .matchup-detail-sticky {
-    position: sticky;
-    top: 12px;
-  }
-  
-  @media (max-width: 1100px) {
-    .matchup-detail-sticky {
-      position: static;
-      top: auto;
-    }
-  }
-  
-  /* Detail shell */
-  .detail-shell {
-    background: rgba(2, 6, 23, 0.48);
-    border: 1px solid rgba(55, 65, 81, 0.65);
-    border-radius: 14px;
-    padding: 10px 10px 12px;
-    box-shadow: var(--shadow-soft);
-  }
-  
-  .detail-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 8px;
-  }
-  
-  .detail-kicker {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    color: var(--text-soft);
-  }
-  
-  .detail-title {
-    margin-top: 3px;
-    font-weight: 600;
-    font-size: var(--font-size-md);
+    border: 1px solid var(--border-strong);
     color: var(--text-main);
+    padding: 6px 12px;
+    cursor: pointer;
   }
   
-  /* Segmented control (Starters / All) */
+  .ghost-btn:hover {
+    border-color: rgba(34, 197, 94, 0.7);
+    box-shadow: 0 10px 25px rgba(34, 197, 94, 0.18);
+  }
+  
   .segmented {
     display: inline-flex;
     background: rgba(15, 23, 42, 0.8);
@@ -422,9 +313,7 @@
     white-space: nowrap;
   }
   
-  .seg-btn:hover {
-    transform: translateY(-1px);
-  }
+  .seg-btn:hover { transform: translateY(-1px); }
   
   .seg-btn.active {
     background: rgba(34, 197, 94, 0.18);
@@ -432,34 +321,142 @@
     box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.45);
   }
   
-  /* Newsletter body container (no longer centered/narrow) */
-  .newsletter-body {
-    max-width: 100%;
-    margin: 0;
-    font-size: var(--font-size-sm);
-    line-height: 1.5;
-  }
-  
-  /* Optional: hide the old bottom charts row for now */
-  .newsletter-charts-row {
-    display: none;
-  }
-  
   /* ------------------------------------------------------
-     MATCHUP LIST (shared styles)
+     NEWSLETTER: STRUCTURE
   ------------------------------------------------------- */
   
-  #matchups-container {
-    margin-top: 6px;
+  #tab-newsletter h2 { margin-bottom: 8px; }
+  
+  /* Shell: left content + right rail */
+  .newsletter-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 28vw, 420px);
+    gap: 12px;
+    align-items: start;
   }
   
-  /* Card shell */
+  @media (max-width: 1100px) {
+    .newsletter-shell { grid-template-columns: 1fr; }
+  }
+  
+  /* LEFT column */
+  .newsletter-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  /* RIGHT rail */
+  .newsletter-aside {
+    min-width: 0;
+    position: sticky;
+    top: 12px;
+  }
+  
+  @media (max-width: 1100px) {
+    .newsletter-aside { position: static; }
+  }
+  
+  /* Newsletter cards */
+  .newsletter-card {
+    background: rgba(15, 23, 42, 0.78);
+    border-radius: 14px;
+    border: 1px solid rgba(55, 65, 81, 0.55);
+    padding: 10px 12px 12px;
+    box-shadow: var(--shadow-card);
+  }
+  
+  .week-brief-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  
+  .week-brief-title {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  
+  .week-brief-blurb { margin-top: 4px; }
+  
+  .newsletter-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+  }
+  
+  .newsletter-head-right {
+    color: var(--text-soft);
+    white-space: nowrap;
+  }
+  
+  .newsletter-week-title {
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-soft);
+  }
+  
+  .newsletter-week-subtitle {
+    margin-top: 4px;
+    font-size: var(--font-size-sm);
+    color: var(--text-soft);
+  }
+  
+  /* Matchups list should scroll internally instead of forcing the whole page */
+  .matchups-scroll {
+    max-height: clamp(340px, calc(100vh - 360px), 720px);
+    overflow: auto;
+    padding-right: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  
+  .matchups-scroll::-webkit-scrollbar { width: 6px; }
+  .matchups-scroll::-webkit-scrollbar-track { background: transparent; }
+  .matchups-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(55, 65, 81, 0.9);
+    border-radius: 99px;
+  }
+  
+  /* Detail card rail: use viewport budget; internal scroll within container */
+  .detail-card {
+    max-height: clamp(420px, calc(100vh - 220px), 860px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .detail-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  
+  /* Tip line */
+  .tip { margin-top: 8px; }
+  
+  /* Optional: hide old charts row */
+  .newsletter-charts-row { display: none; }
+  
+  /* ------------------------------------------------------
+     MATCHUP LIST (cards)
+  ------------------------------------------------------- */
+  
+  #matchups-container { margin-top: 6px; }
+  
   .matchup-card {
     position: relative;
     background: var(--bg-card);
     border-radius: var(--radius-card-sm);
     border: 1px solid var(--border-subtle);
-    padding: 8px 12px 10px;
+    padding: 9px 12px 10px; /* tightened */
     margin-bottom: 8px;
     cursor: pointer;
     transition:
@@ -547,13 +544,9 @@
     text-shadow: 0 0 12px rgba(34, 197, 94, 0.25);
   }
   
-  .matchup-score-side.loser .matchup-score-main {
-    color: var(--text-faint);
-  }
+  .matchup-score-side.loser .matchup-score-main { color: var(--text-faint); }
   
-  .matchup-score-range {
-    color: var(--text-soft);
-  }
+  .matchup-score-range { color: var(--text-soft); }
   
   /* Chips */
   .tag {
@@ -582,8 +575,8 @@
   
   #matchup-detail-container {
     margin-top: 6px;
-    max-height: calc(100vh - 220px);
-    overflow: auto;
+    overflow: auto;                /* allow both x/y scrolling */
+    overscroll-behavior: contain;  /* nicer rail behavior */
     border-radius: 12px;
     border: 1px solid rgba(31, 41, 55, 0.85);
     background: radial-gradient(
@@ -598,29 +591,31 @@
     scrollbar-color: var(--border-strong) transparent;
   }
   
-  #matchup-detail-container::-webkit-scrollbar {
-    width: 6px;
-  }
-  #matchup-detail-container::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  #matchup-detail-container::-webkit-scrollbar { width: 6px; height: 6px; }
+  #matchup-detail-container::-webkit-scrollbar-track { background: transparent; }
   #matchup-detail-container::-webkit-scrollbar-thumb {
     background-color: rgba(55, 65, 81, 0.9);
     border-radius: 99px;
   }
   
+  /* Layout default: 2 columns (if used outside the rail someday) */
   .detail-layout {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0;
+    gap: 10px;
     min-width: 100%;
   }
   
-  @media (max-width: 900px) {
-    .detail-layout {
-      grid-template-columns: 1fr;
-    }
+  /* In the narrow right rail, stacking is cleaner than “smushed” */
+  #tab-newsletter .newsletter-aside #matchup-detail-container .detail-layout {
+    grid-template-columns: 1fr;
   }
+  
+  @media (max-width: 900px) {
+    .detail-layout { grid-template-columns: 1fr; }
+  }
+  
+  .detail-team { min-width: 0; }
   
   .detail-team-header {
     padding: 0 6px 6px;
@@ -644,9 +639,12 @@
   
   /* Player tables */
   .detail-table {
-    width: 100%;
     border-collapse: collapse;
     font-size: var(--font-size-xs);
+  
+    /* IMPORTANT: prevents right-side columns being cut off */
+    width: max-content;
+    min-width: 100%;
   }
   
   .detail-table thead th {
@@ -663,25 +661,12 @@
   }
   
   /* Column toggle affordance */
-  .detail-table th[data-col] {
-    cursor: pointer;
-  }
+  .detail-table th[data-col] { cursor: pointer; }
+  .detail-table th[data-col]:hover { color: var(--accent); }
+  .detail-table .col-hidden { display: none; }
   
-  .detail-table th[data-col]:hover {
-    color: var(--accent);
-  }
-  
-  .detail-table .col-hidden {
-    display: none;
-  }
-  
-  .detail-table tbody tr:nth-child(odd) {
-    background: rgba(15, 23, 42, 0.86);
-  }
-  
-  .detail-table tbody tr:nth-child(even) {
-    background: rgba(15, 23, 42, 0.78);
-  }
+  .detail-table tbody tr:nth-child(odd) { background: rgba(15, 23, 42, 0.86); }
+  .detail-table tbody tr:nth-child(even) { background: rgba(15, 23, 42, 0.78); }
   
   .detail-table td {
     padding: 5px 6px;
@@ -704,12 +689,42 @@
     text-overflow: ellipsis;
   }
   
-  .detail-table td:nth-child(n + 3) {
-    text-align: right;
-  }
+  .detail-table td:nth-child(n + 3) { text-align: right; }
   
   /* ------------------------------------------------------
-     LEAGUE PULSE (NEW)
+     ODDS TABLE (for “Championship Picture” extras)
+  ------------------------------------------------------- */
+  
+  .odds-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-xs);
+    margin-top: 8px;
+  }
+  
+  .odds-table th,
+  .odds-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(2, 6, 23, 0.9);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .odds-table th:first-child,
+  .odds-table td:first-child { text-align: left; }
+  
+  .odds-table thead th {
+    background: rgba(15, 23, 42, 0.96);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  
+  .odds-table tbody tr:nth-child(odd) { background: rgba(15, 23, 42, 0.84); }
+  .odds-table tbody tr:nth-child(even) { background: rgba(15, 23, 42, 0.76); }
+  
+  /* ------------------------------------------------------
+     LEAGUE PULSE (optional)
   ------------------------------------------------------- */
   
   .pulse-grid {
@@ -720,9 +735,7 @@
   }
   
   @media (max-width: 1100px) {
-    .pulse-grid {
-      grid-template-columns: 1fr;
-    }
+    .pulse-grid { grid-template-columns: 1fr; }
   }
   
   .pulse-card {
@@ -746,9 +759,7 @@
      ROSTER SELECTOR – BUTTON GRID
   ------------------------------------------------------- */
   
-  .roster-controls {
-    margin-bottom: 10px;
-  }
+  .roster-controls { margin-bottom: 10px; }
   
   .roster-selector-grid {
     display: grid;
@@ -765,12 +776,8 @@
     scrollbar-color: var(--border-strong) transparent;
   }
   
-  .roster-selector-grid::-webkit-scrollbar {
-    width: 6px;
-  }
-  .roster-selector-grid::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  .roster-selector-grid::-webkit-scrollbar { width: 6px; }
+  .roster-selector-grid::-webkit-scrollbar-track { background: transparent; }
   .roster-selector-grid::-webkit-scrollbar-thumb {
     background-color: rgba(55, 65, 81, 0.9);
     border-radius: 99px;
@@ -808,9 +815,7 @@
   
   /* Roster cards */
   
-  #roster-view-container {
-    margin-top: 10px;
-  }
+  #roster-view-container { margin-top: 10px; }
   
   .roster-card {
     background: rgba(15, 23, 42, 0.78);
@@ -828,9 +833,7 @@
     margin-bottom: 8px;
   }
   
-  .roster-header strong {
-    font-size: var(--font-size-md);
-  }
+  .roster-header strong { font-size: var(--font-size-md); }
   
   .roster-player {
     display: grid;
@@ -878,7 +881,7 @@
   }
   
   /* ------------------------------------------------------
-     SEASON OVERVIEW / INSIGHTS (kept close to your original)
+     SEASON OVERVIEW / INSIGHTS
   ------------------------------------------------------- */
   
   .season-overview {
@@ -888,9 +891,7 @@
   }
   
   @media (max-width: 900px) {
-    .season-overview {
-      grid-template-columns: 1fr;
-    }
+    .season-overview { grid-template-columns: 1fr; }
   }
   
   .season-subheading {
@@ -907,12 +908,14 @@
     background: rgba(15, 23, 42, 0.78);
     padding: 8px 10px;
     box-shadow: var(--shadow-soft);
+    overflow: auto;
   }
   
   .season-standings-table {
     width: 100%;
     border-collapse: collapse;
     font-size: var(--font-size-xs);
+    min-width: 520px; /* avoids cramped columns */
   }
   
   .season-standings-table th,
@@ -930,9 +933,7 @@
   }
   
   .season-standings-table th:nth-child(2),
-  .season-standings-table td:nth-child(2) {
-    text-align: left;
-  }
+  .season-standings-table td:nth-child(2) { text-align: left; }
   
   .season-standings-table thead th {
     background: rgba(15, 23, 42, 0.96);
@@ -941,17 +942,9 @@
     z-index: 1;
   }
   
-  .season-standings-table tbody tr:nth-child(odd) {
-    background: rgba(15, 23, 42, 0.84);
-  }
-  
-  .season-standings-table tbody tr:nth-child(even) {
-    background: rgba(15, 23, 42, 0.76);
-  }
-  
-  .season-standings-table tbody tr:hover {
-    background: rgba(34, 197, 94, 0.08);
-  }
+  .season-standings-table tbody tr:nth-child(odd) { background: rgba(15, 23, 42, 0.84); }
+  .season-standings-table tbody tr:nth-child(even) { background: rgba(15, 23, 42, 0.76); }
+  .season-standings-table tbody tr:hover { background: rgba(34, 197, 94, 0.08); }
   
   .season-metrics-container {
     border-radius: 12px;
@@ -963,9 +956,7 @@
     box-shadow: var(--shadow-soft);
   }
   
-  .season-metrics-container p {
-    margin: 4px 0;
-  }
+  .season-metrics-container p { margin: 4px 0; }
   
   /* Generic chart cards */
   .chart-card {
@@ -992,327 +983,37 @@
   }
   
   /* ------------------------------------------------------
-     NEWSLETTER CARD STYLES (kept, slightly tightened)
+     SUMMARY DIALOG
   ------------------------------------------------------- */
   
-  .newsletter-week-header {
-    margin-bottom: 10px;
+  .summary-dialog {
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    border-radius: 16px;
+    background: rgba(8, 12, 30, 0.98);
+    color: var(--text-main);
+    padding: 0;
+    width: min(780px, calc(100vw - 32px));
   }
   
-  .newsletter-week-title {
-    font-size: var(--font-size-md);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: var(--text-soft);
-  }
+  .summary-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
   
-  .newsletter-week-subtitle {
-    margin-top: 4px;
-    font-size: var(--font-size-sm);
-    color: var(--text-soft);
-  }
+  .summary-dialog-inner { padding: 14px; }
   
-  .newsletter-matchups-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 10px;
-  }
-  
-  .newsletter-card {
-    background: rgba(15, 23, 42, 0.78);
-    border-radius: 14px;
-    border: 1px solid rgba(55, 65, 81, 0.55);
-    padding: 10px 12px 12px;
-    box-shadow: var(--shadow-card);
-  }
-  
-  .newsletter-matchup-card .nm-header-row {
+  .summary-dialog-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 4px;
+    gap: 10px;
+    margin-bottom: 10px;
   }
   
-  .nm-teams {
-    font-size: var(--font-size-md);
-    font-weight: 500;
+  .summary-title { font-weight: 600; }
+  
+  /* Mobile adjustments */
+  @media (max-width: 1100px) {
+    #app { margin: 14px auto 22px; }
+    .newsletter-aside { position: static; }
+    .detail-card { max-height: none; }
+    .matchups-scroll { max-height: none; }
   }
   
-  .nm-vs {
-    font-weight: 400;
-    color: var(--text-soft);
-  }
-  
-  .nm-meta {
-    font-size: var(--font-size-xs);
-    color: var(--text-soft);
-    margin-bottom: 4px;
-  }
-  
-  .newsletter-matchup-card p {
-    margin: 2px 0;
-  }
-  
-  .nm-final-line {
-    font-size: var(--font-size-sm);
-  }
-  
-  .nm-final-line .label {
-    font-weight: 600;
-    margin-right: 4px;
-  }
-  
-  .nm-recap {
-    font-size: var(--font-size-sm);
-    color: var(--text-soft);
-  }
-  
-  .nm-tag {
-    border-radius: var(--radius-pill);
-    padding: 2px 10px;
-    font-size: var(--font-size-xs);
-    border: 1px solid var(--border-strong);
-    color: var(--text-soft);
-    white-space: nowrap;
-  }
-  
-  .nm-tag.close {
-    border-color: rgba(34, 211, 238, 0.65);
-    color: var(--accent-cyan);
-  }
-  
-  .nm-tag.blowout {
-    border-color: rgba(249, 115, 115, 0.65);
-    color: var(--danger);
-  }
-  
-  .nm-tag.track {
-    border-color: rgba(34, 197, 94, 0.65);
-    color: var(--accent);
-  }
-  
-  /* ======================================================
-   VIEWPORT FIT + NEWSLETTER SPLIT LAYOUT (DROP-IN)
-====================================================== */
-
-html, body { height: 100%; }
-
-body {
-  overflow: hidden; /* stop page-level scrolling */
-}
-
-/* Make app shell consume viewport */
-#app {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  margin: 14px auto 14px;
-}
-
-/* Let panel be the scrolling container host */
-.panel {
-  flex: 1 1 auto;
-  overflow: hidden;
-}
-
-/* Each active tab fills the panel */
-.tab-panel.active {
-  height: 100%;
-  min-height: 0;
-}
-
-/* Newsletter: header + split grid fills remaining space */
-#tab-newsletter {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.newsletter-shell {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
-  gap: 12px;
-}
-
-/* LEFT column: internal scrolling only where needed */
-.newsletter-main {
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Matchup list scrolls (not the page) */
-.matchups-scroll {
-  min-height: 0;
-  overflow: auto;
-  padding-right: 6px;
-}
-
-/* RIGHT column: detail rail fills height + scrolls internally */
-.newsletter-aside {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.detail-card {
-  height: 100%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.detail-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-#matchup-detail-container {
-  flex: 1 1 auto;
-  max-height: none; /* override old max-height */
-  overflow: auto;
-  padding: 8px 10px;
-}
-
-/* This fixes the “smushed” two-team table in a narrow rail */
-#matchup-detail-container .detail-layout {
-  grid-template-columns: 1fr;
-}
-
-/* Slightly tighter matchup cards to fit more above the fold */
-.matchup-card {
-  padding: 9px 12px 10px;
-  margin-bottom: 8px;
-}
-
-/* Week brief styling */
-.week-brief-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.week-brief-title {
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.week-brief-blurb {
-  margin-top: 4px;
-}
-
-/* Section head */
-.newsletter-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.newsletter-head-right {
-  color: var(--text-soft);
-  white-space: nowrap;
-}
-
-/* Segmented control */
-.segmented {
-  display: inline-flex;
-  padding: 3px;
-  border-radius: 999px;
-  border: 1px solid rgba(55, 65, 81, 0.9);
-  background: rgba(2, 6, 23, 0.55);
-  gap: 2px;
-}
-
-.seg-btn {
-  border: none;
-  background: transparent;
-  color: var(--text-soft);
-  padding: 6px 10px;
-  border-radius: 999px;
-  cursor: pointer;
-  font-size: var(--font-size-xs);
-}
-
-.seg-btn.active {
-  background: rgba(34, 197, 94, 0.18);
-  color: #ecfdf5;
-  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.45);
-}
-
-/* Simple “ghost” button */
-.ghost-btn {
-  background: transparent;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  color: var(--text-main);
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
-.ghost-btn:hover {
-  border-color: rgba(34, 197, 94, 0.7);
-  box-shadow: 0 10px 25px rgba(34, 197, 94, 0.18);
-}
-
-/* Kicker label */
-.kicker {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-soft);
-}
-
-/* Summary dialog */
-.summary-dialog {
-  border: 1px solid rgba(55, 65, 81, 0.9);
-  border-radius: 16px;
-  background: rgba(8, 12, 30, 0.98);
-  color: var(--text-main);
-  padding: 0;
-  width: min(780px, calc(100vw - 32px));
-}
-
-.summary-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.55);
-}
-
-.summary-dialog-inner {
-  padding: 14px;
-}
-
-.summary-dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.summary-title {
-  font-weight: 600;
-}
-
-/* Mobile: stack the rail below */
-@media (max-width: 1100px) {
-  body { overflow: auto; } /* allow page scroll on small screens */
-  #app { height: auto; }
-  .panel { overflow: visible; }
-
-  .newsletter-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .newsletter-aside {
-    height: 420px;
-  }
-}
