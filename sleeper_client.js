@@ -400,70 +400,86 @@
      *     captured_at timestamptz default now()
      *   );
      */
-     async function persistSnapshotToSupabase(snapshot, extraMeta = {}) {
+    // ---------------------------------------------------------------------------
+    // Supabase: persist a snapshot row
+    // ---------------------------------------------------------------------------
+    async function persistSnapshotToSupabase(snapshot) {
         const client = getSupabaseClient();
         if (!client) {
-          console.warn("[SleeperClient] Supabase client unavailable; skipping snapshot persist.");
-          return null;
+        console.warn(
+            "[SleeperClient] Supabase client unavailable; skipping snapshot persist."
+        );
+        return null;
         }
-      
-        // Make 100% sure we have a valid table name
+    
+        // Make sure we have a valid table name
         const tableName =
-          (SUPABASE_CONFIG && typeof SUPABASE_CONFIG.TABLE_NAME === "string" &&
+        (SUPABASE_CONFIG &&
+            typeof SUPABASE_CONFIG.TABLE_NAME === "string" &&
             SUPABASE_CONFIG.TABLE_NAME.trim()) ||
-          "sleeper_snapshots";
-      
+        "sleeper_snapshots";
+    
         if (!tableName) {
-          console.warn(
+        console.warn(
             "[SleeperClient] Cannot persist snapshot – TABLE_NAME is empty in SUPABASE_CONFIG."
-          );
-          return null;
+        );
+        return null;
         }
-      
+    
         try {
-          const leagueIdFromSnapshot =
-            (snapshot && snapshot.league && snapshot.league.league_id) ||
+        const leagueIdFromSnapshot =
+            (snapshot &&
+            snapshot.league &&
+            (snapshot.league.league_id || snapshot.league.leagueId)) ||
             CONFIG.LEAGUE_ID ||
             null;
-      
-          const row = Object.assign(
-            {
-              league_id: leagueIdFromSnapshot ? String(leagueIdFromSnapshot) : null,
-              week:
-                snapshot && typeof snapshot.week === "number"
-                  ? snapshot.week
-                  : null,
-              snapshot, // stored as jsonb
-              captured_at: new Date().toISOString(),
-            },
-            extraMeta
-          );
-      
-          const { data, error } = await client
+    
+        const weekFromSnapshot =
+            snapshot && typeof snapshot.week === "number"
+            ? snapshot.week
+            : null;
+    
+        const row = {
+            league_id: leagueIdFromSnapshot ? String(leagueIdFromSnapshot) : null,
+            week: weekFromSnapshot,
+            snapshot, // jsonb column
+            captured_at: new Date().toISOString(),
+        };
+    
+        const { data, error } = await client
             .from(tableName)
             .insert(row)
-            .select()
+            // only select columns we know exist
+            .select("id, league_id, week, captured_at")
             .maybeSingle();
-      
-          if (error) {
+    
+        if (error) {
             console.warn(
-              "[SleeperClient] Failed to persist snapshot to Supabase table `" +
+            "[SleeperClient] Failed to persist snapshot to Supabase table `" +
                 tableName +
                 "`:",
-              error
+            error
             );
             return null;
-          }
-      
-          return data || null;
-        } catch (err) {
-          console.warn(
-            "[SleeperClient] Unexpected error persisting snapshot to Supabase:",
-            err
-          );
-          return null;
         }
-      }
+    
+        console.log(
+            "[SleeperClient] Snapshot persisted to `" +
+            tableName +
+            "`:",
+            data
+        );
+    
+        return data || null;
+        } catch (err) {
+        console.warn(
+            "[SleeperClient] Unexpected error persisting snapshot:",
+            err
+        );
+        return null;
+        }
+    }
+    
       
       
   
