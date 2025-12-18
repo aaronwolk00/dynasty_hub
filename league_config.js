@@ -9,45 +9,49 @@
 //   • LEAGUE_CONFIG.ktc            (KTC-specific tuning)
 //   • LEAGUE_CONFIG.PLAYOFFS       (rounds, weeks, labels)
 //   • LEAGUE_CONFIG.ui             (front-end toggles)
-// ----------------------------------------------------------------------------- 
+// -----------------------------------------------------------------------------
 
 (function () {
     "use strict";
   
-    const PHRASE_SUPABASE_URL =
-      "https://mugfsmqcrkfsehdyoruy.supabase.co";
-    const PHRASE_SUPABASE_ANON =
+    // Single Supabase project used for:
+    //   - nlg_phrases
+    //   - ktc_values / ktc_latest_values
+    //   - receipts / transactions (later)
+    //   - sleeper_snapshots
+    const PROJECT_SUPABASE_URL = "https://mugfsmqcrkfsehdyoruy.supabase.co";
+    const PROJECT_SUPABASE_ANON =
       "sb_publishable_z6H9o_SOKq4VngF2JD3Peg_5NmwjMfW";
+  
+    const LEAGUE_ID = "1180559121900638208";
   
     const LEAGUE_CONFIG = {
       // -------------------------------------------------------------------------
       // Core Sleeper league identity
       // -------------------------------------------------------------------------
-      LEAGUE_ID: "1180559121900638208",
-  
+      LEAGUE_ID,
       // Backwards-compat alias some scripts might still reference
-      SLEEPER_LEAGUE_ID: "1180559121900638208",
+      SLEEPER_LEAGUE_ID: LEAGUE_ID,
   
       // -------------------------------------------------------------------------
-      // Phrases / recap engine Supabase config (existing)
+      // Phrases / recap engine Supabase config
       // -------------------------------------------------------------------------
       PHRASE_CONFIG: {
-        url: PHRASE_SUPABASE_URL,
-        anonKey: PHRASE_SUPABASE_ANON,
+        url: PROJECT_SUPABASE_URL,
+        anonKey: PROJECT_SUPABASE_ANON,
       },
   
       // -------------------------------------------------------------------------
-      // Generic Supabase config for app data (KTC, receipts, etc.)
+      // Generic Supabase config for app data (KTC, receipts, snapshots, etc.)
       // -------------------------------------------------------------------------
       supabase: {
-        // If you use the same project for everything, just reuse the phrase one:
-        url: PHRASE_SUPABASE_URL,
-        anonKey: PHRASE_SUPABASE_ANON,
+        url: PROJECT_SUPABASE_URL,
+        anonKey: PROJECT_SUPABASE_ANON,
   
-        // Optional: override table + pagination for ktc_client.js
-        ktcTable: "ktc_values", // table containing your KTC dump
-        ktcPageSize: 300,       // rows per page to pull
-        ktcMaxPages: 20,        // safety cap, 300 * 20 = 6000 rows max
+        // Used by ktc_client.js
+        ktcTable: "ktc_values",
+        ktcPageSize: 300,
+        ktcMaxPages: 20,
       },
   
       // -------------------------------------------------------------------------
@@ -58,8 +62,7 @@
         pageSize: 300,
         maxPages: 20,
         // If you ever move KTC to a dedicated Supabase project,
-        // you can extend this with its own url/anonKey and update
-        // ktc_client.js to prefer ktc.supabaseOverride.
+        // extend this with its own url/anonKey and update ktc_client.js.
       },
   
       // -------------------------------------------------------------------------
@@ -96,6 +99,22 @@
       },
     };
   
+    // Expose main config first so other scripts can safely read it.
     window.LEAGUE_CONFIG = LEAGUE_CONFIG;
+  
+    // ---------------------------------------------------------------------------
+    // Bridge: SleeperClient Supabase config for sleeper_snapshots
+    //
+    // Used by sleeper_client.js (getSupabaseClient / persistSnapshotToSupabase).
+    // ---------------------------------------------------------------------------
+    window.SUPABASE_CONFIG = {
+      ENABLED: true,
+      SUPABASE_URL: LEAGUE_CONFIG.supabase.url,
+      SUPABASE_ANON_KEY: LEAGUE_CONFIG.supabase.anonKey,
+      TABLE_NAME: "sleeper_snapshots",
+      // We manually persist snapshots from newsletter.js, but leaving this true
+      // keeps getLeagueSnapshot() useful if you ever call it directly.
+      AUTO_PERSIST_SNAPSHOTS: true,
+    };
   })();
   

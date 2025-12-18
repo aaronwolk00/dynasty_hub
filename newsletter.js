@@ -1062,571 +1062,604 @@
       container.innerHTML = html;
     }
   
-    // -----------------------
-    // Core loader
-    // -----------------------
+// -----------------------
+// Core loader
+// -----------------------
+
+async function loadWeek(week) {
+    const matchupsContainer = $("#matchups-container");
+    const newsletterContent = $("#newsletter-content");
+    const subtitle = $("#league-subtitle");
+    const cfg = window.LEAGUE_CONFIG || {};
   
-    async function loadWeek(week) {
-      const matchupsContainer = $("#matchups-container");
-      const newsletterContent = $("#newsletter-content");
-      const subtitle = $("#league-subtitle");
-      const cfg = window.LEAGUE_CONFIG || {};
+    CURRENT_WEEK = week;
+    CURRENT_MATCHUP_ENTRIES = [];
+    SEMI_MATCHUP_ID_SET = null;
   
-      CURRENT_WEEK = week;
-      CURRENT_MATCHUP_ENTRIES = [];
-      SEMI_MATCHUP_ID_SET = null;
+    if (matchupsContainer) {
+      matchupsContainer.innerHTML =
+        '<div class="loading">Loading Week ' +
+        week +
+        " matchups…</div>";
+    }
+    if (newsletterContent) {
+      newsletterContent.innerHTML =
+        '<p class="small">Building projections and simulations…</p>';
+    }
   
-      if (matchupsContainer) {
-        matchupsContainer.innerHTML =
-          '<div class="loading">Loading Week ' +
-          week +
-          " matchups…</div>";
+    try {
+      if (!window.SleeperClient) {
+        throw new Error(
+          "SleeperClient is not available. Ensure sleeper_client.js is loaded before newsletter.js."
+        );
       }
-      if (newsletterContent) {
-        newsletterContent.innerHTML =
-          '<p class="small">Building projections and simulations…</p>';
+      if (!window.LeagueModels || !window.ProjectionEngine) {
+        throw new Error(
+          "LeagueModels or ProjectionEngine missing. Check models.js and projections.js are loaded."
+        );
       }
   
+      // Pull league bundle for weeks 1..week for season averages
+      const weeksToFetch = [];
+      for (let w = 1; w <= week; w++) weeksToFetch.push(w);
+  
+      const bundle = await window.SleeperClient.fetchLeagueBundle({
+        weeks: weeksToFetch,
+      });
+      window.__LAST_BUNDLE__ = bundle;
+  
+      // Optional: let TeamProfile render its own season overview
       try {
-        if (!window.SleeperClient) {
-          throw new Error(
-            "SleeperClient is not available. Ensure sleeper_client.js is loaded before newsletter.js."
-          );
+        if (
+          window.TeamProfile &&
+          typeof window.TeamProfile.renderSeasonOverview === "function"
+        ) {
+          window.TeamProfile.renderSeasonOverview(bundle, { currentWeek: week });
         }
-        if (!window.LeagueModels || !window.ProjectionEngine) {
-          throw new Error(
-            "LeagueModels or ProjectionEngine missing. Check models.js and projections.js are loaded."
-          );
-        }
+      } catch (e) {
+        console.warn("[newsletter.js] Season overview render error:", e);
+      }
   
-        // Pull league bundle for weeks 1..week for season averages
-        const weeksToFetch = [];
-        for (let w = 1; w <= week; w++) weeksToFetch.push(w);
+      const league = bundle.league || {};
+      const leagueName = league.name || "Sleeper League";
+      const season = league.season || (cfg.season && cfg.season.year) || "";
   
-        const bundle = await window.SleeperClient.fetchLeagueBundle({
-          weeks: weeksToFetch,
-        });
-        window.__LAST_BUNDLE__ = bundle;
-
-        // After: window.__LAST_BUNDLE__ = bundle;
-        try {
-            if (
-            window.TeamProfile &&
-            typeof window.TeamProfile.renderSeasonOverview === "function"
-            ) {
-            window.TeamProfile.renderSeasonOverview(bundle, { currentWeek: week });
+      if (subtitle) {
+        subtitle.textContent =
+          leagueName + " • Season " + season + " • Week " + week;
+      }
+  
+      // Season averages available to projections.js and detail view
+      CURRENT_SEASON_AVG = computeSeasonAverages(bundle, week);
+      window.__SEASON_AVG_BY_PLAYER_ID__ = CURRENT_SEASON_AVG;
+  
+      // -----------------------------------------------------------------------
+      // Build snapshot object for this specific week and persist it to Supabase
+      // -----------------------------------------------------------------------
+      const snapshot = {
+        league,
+        users: bundle.users || [],
+        rosters: bundle.rosters || [],
+        matchups:
+          (bundle.matchupsByWeek && bundle.matchupsByWeek[week]) || [],
+        winnersBracket: bundle.winnersBracket || [],
+        week: week,
+      };
+  
+      // Persist Sleeper snapshot to Supabase in the background.
+      if (
+        window.SleeperClient &&
+        typeof window.SleeperClient.persistSnapshotToSupabase === "function"
+      ) {
+        window.SleeperClient
+          .persistSnapshotToSupabase(snapshot, {
+            source: "newsletter_loadWeek",
+          })
+          .then((row) => {
+            if (row && row.id != null) {
+              console.log(
+                "[newsletter.js] Sleeper snapshot persisted (id=" +
+                  row.id +
+                  ", league_id=" +
+                  row.league_id +
+                  ", week=" +
+                  row.week +
+                  ")"
+              );
+            } else {
+              console.log(
+                "[newsletter.js] Sleeper snapshot persist completed (no row returned)."
+              );
             }
-        } catch (e) {
-            console.warn("[newsletter.js] Season overview render error:", e);
-        }
-        
+          })
+          .catch((err) => {
+            console.warn(
+              "[newsletter.js] Failed to persist Sleeper snapshot:",
+              err
+            );
+          });
+      }
   
-        const league = bundle.league || {};
-        const leagueName = league.name || "Sleeper League";
-        const season =
-          league.season || (cfg.season && cfg.season.year) || "";
-  
-        if (subtitle) {
-          subtitle.textContent =
-            leagueName + " • Season " + season + " • Week " + week;
-        }
-  
-        // Season averages available to projections.js and detail view
-        CURRENT_SEASON_AVG = computeSeasonAverages(bundle, week);
-        window.__SEASON_AVG_BY_PLAYER_ID__ = CURRENT_SEASON_AVG;
-  
-        const snapshot = {
-          league,
-          users: bundle.users || [],
-          rosters: bundle.rosters || [],
-          matchups:
-            (bundle.matchupsByWeek &&
-              bundle.matchupsByWeek[week]) ||
-            [],
-        };
-
-        // Inside loadWeek, after you’ve built `snapshot` and before you call PhraseEngine.buildResultSentence:
-        const allScoresThisWeek = (snapshot.matchups || [])
+      const allScoresThisWeek = (snapshot.matchups || [])
         .flatMap((m) =>
-        (m.teams || [])
+          (m.teams || [])
             .map((t) => Number(t.score))
             .filter((v) => Number.isFinite(v))
         );
-
-
-        const rosterById = {};
-        (snapshot.rosters || []).forEach((r) => {
-            rosterById[r.roster_id] = r;
+  
+      const rosterById = {};
+      (snapshot.rosters || []).forEach((r) => {
+        rosterById[r.roster_id] = r;
+      });
+  
+      const playerMap = window.__SLEEPER_PLAYER_MAP__ || null;
+      const semiWeek =
+        cfg.SEMIFINAL_WEEK ||
+        (cfg.playoff && cfg.playoff.semifinalWeek) ||
+        null;
+  
+      let weeklyMatchups =
+        window.LeagueModels.buildAllMatchupsForWeek(
+          snapshot,
+          playerMap
+        ) || [];
+  
+      // Determine if this week is historical (games played)
+      const isHistoricalWeek = inferHistoricalWeek(snapshot.matchups);
+  
+      // For semifinal week, if not historical, prefer bracket-based matchups.
+      if (!isHistoricalWeek && semiWeek && week === Number(semiWeek)) {
+        const playoffMatchups =
+          window.LeagueModels.buildPlayoffMatchups(snapshot, cfg, {
+            week,
+            playerMap,
+          }) || [];
+        if (playoffMatchups.length) {
+          weeklyMatchups = playoffMatchups;
+        }
+      }
+  
+      if (!weeklyMatchups.length) {
+        if (matchupsContainer) {
+          matchupsContainer.innerHTML =
+            '<article class="matchup-card">' +
+            '<div class="matchup-header">' +
+            '<div class="matchup-teams">No matchups found for Week ' +
+            week +
+            "</div>" +
+            "</div>" +
+            '<div class="matchup-scores">' +
+            '<span class="small">Check that your league has matchups scheduled for this week.</span>' +
+            "</div>" +
+            "</article>";
+        }
+        if (newsletterContent) {
+          newsletterContent.innerHTML =
+            "<p>No matchups detected for this week.</p>";
+        }
+        // Still render season overview from full bundle
+        renderSeasonOverview(bundle);
+        return;
+      }
+  
+      let matchupEntries = [];
+      let champObj = null;
+  
+      if (isHistoricalWeek) {
+        // Completed week: no projections or sims. Just scores.
+        matchupEntries = weeklyMatchups.map((m, idx) => {
+          const id =
+            computeMatchupIdForWeek(m, week) ||
+            "week" + week + "_m_fallback" + (idx + 1);
+  
+          return {
+            id,
+            roundLabel: getRoundLabelFromConfig(cfg, week),
+            bestOf: 1,
+            historical: true,
+            teams: m.teams,
+          };
         });
-  
-        const playerMap = window.__SLEEPER_PLAYER_MAP__ || null;
-        const semiWeek =
-          cfg.SEMIFINAL_WEEK ||
-          (cfg.playoff && cfg.playoff.semifinalWeek) ||
-          null;
-  
-        let weeklyMatchups =
-          window.LeagueModels.buildAllMatchupsForWeek(
-            snapshot,
-            playerMap
-          ) || [];
-  
-        // Determine if this week is historical (games played)
-        const isHistoricalWeek = inferHistoricalWeek(snapshot.matchups);
-  
-        // For semifinal week, if not historical, prefer bracket-based matchups.
-        if (!isHistoricalWeek && semiWeek && week === Number(semiWeek)) {
-          const playoffMatchups =
-            window.LeagueModels.buildPlayoffMatchups(snapshot, cfg, {
-              week,
-              playerMap,
-            }) || [];
-          if (playoffMatchups.length) {
-            weeklyMatchups = playoffMatchups;
+      } else {
+        // Future / current week: projections + sims
+        for (let i = 0; i < weeklyMatchups.length; i++) {
+          const m = weeklyMatchups[i];
+          const projectedMatchup =
+            window.ProjectionEngine.projectMatchup(m);
+          if (
+            !projectedMatchup ||
+            !projectedMatchup.projected ||
+            !projectedMatchup.projected.teamA ||
+            !projectedMatchup.projected.teamB
+          ) {
+            continue;
           }
-        }
   
-        if (!weeklyMatchups.length) {
-          if (matchupsContainer) {
-            matchupsContainer.innerHTML =
-              '<article class="matchup-card">' +
-              '<div class="matchup-header">' +
-              '<div class="matchup-teams">No matchups found for Week ' +
-              week +
-              "</div>" +
-              "</div>" +
-              '<div class="matchup-scores">' +
-              '<span class="small">Check that your league has matchups scheduled for this week.</span>' +
-              "</div>" +
-              "</article>";
-          }
-          if (newsletterContent) {
-            newsletterContent.innerHTML =
-              "<p>No matchups detected for this week.</p>";
-          }
-          // Still render season overview from full bundle
-          renderSeasonOverview(bundle);
-          return;
-        }
-  
-        let matchupEntries = [];
-        let champObj = null;
-  
-        if (isHistoricalWeek) {
-          // Completed week: no projections or sims. Just scores.
-          matchupEntries = weeklyMatchups.map((m, idx) => {
-            const id =
-              computeMatchupIdForWeek(m, week) ||
-              "week" + week + "_m_fallback" + (idx + 1);
-          
-            return {
-              id,
-              roundLabel: getRoundLabelFromConfig(cfg, week),
-              bestOf: 1,
-              historical: true,
-              teams: m.teams,
-            };
-          });          
-        } else {
-          // Future / current week: projections + sims
-          for (let i = 0; i < weeklyMatchups.length; i++) {
-            const m = weeklyMatchups[i];
-            const projectedMatchup =
-              window.ProjectionEngine.projectMatchup(m);
-            if (
-              !projectedMatchup ||
-              !projectedMatchup.projected ||
-              !projectedMatchup.projected.teamA ||
-              !projectedMatchup.projected.teamB
-            ) {
-              continue;
+          const sim = window.ProjectionEngine.simulateMatchup(
+            projectedMatchup,
+            {
+              sims: 15000,
+              trackScores: false,
             }
+          );
+          if (!sim) continue;
   
-            const sim = window.ProjectionEngine.simulateMatchup(
-              projectedMatchup,
-              {
-                sims: 15000,
-                trackScores: false,
-              }
-            );
-            if (!sim) continue;
+          const id =
+            computeMatchupIdForWeek(m, week) ||
+            "week" + week + "_m_fallback" + (i + 1);
   
-            const id =
-              computeMatchupIdForWeek(m, week) ||
-              "week" + week + "_m_fallback" + (i + 1);
+          matchupEntries.push({
+            id,
+            roundLabel: getRoundLabelFromConfig(cfg, week),
+            bestOf: m.bestOf || 1,
+            projectedMatchup,
+            sim,
+          });
+        }
   
-              matchupEntries.push({
-                id,
-                roundLabel: getRoundLabelFromConfig(cfg, week),
-                bestOf: m.bestOf || 1,
-                projectedMatchup,
-                sim,
-              });
-              
-          }
+        // Optional: championship odds if this is the semifinal week
+        try {
+          if (semiWeek && week === Number(semiWeek)) {
+            const semiMatchups =
+              window.LeagueModels.buildPlayoffMatchups(
+                snapshot,
+                cfg,
+                { week, playerMap }
+              ) || [];
   
-          // Optional: championship odds if this is the semifinal week
-          try {
-            if (semiWeek && week === Number(semiWeek)) {
-              const semiMatchups =
-                window.LeagueModels.buildPlayoffMatchups(
-                  snapshot,
-                  cfg,
-                  { week, playerMap }
-                ) || [];
+            if (semiMatchups.length >= 2) {
+              const semiResults = semiMatchups
+                .map((pm) => {
+                  const proj =
+                    window.ProjectionEngine.projectMatchup(pm);
+                  const sim =
+                    proj &&
+                    window.ProjectionEngine.simulateMatchup(proj, {
+                      sims: 20000,
+                      trackScores: false,
+                    });
+                  return {
+                    originalMatchup: pm,
+                    projected: proj,
+                    sim,
+                  };
+                })
+                .filter(
+                  (r) =>
+                    r &&
+                    r.projected &&
+                    r.projected.projected &&
+                    r.sim
+                );
   
-              if (semiMatchups.length >= 2) {
-                const semiResults = semiMatchups
-                  .map((pm) => {
-                    const proj =
-                      window.ProjectionEngine.projectMatchup(pm);
-                    const sim =
-                      proj &&
-                      window.ProjectionEngine.simulateMatchup(proj, {
-                        sims: 20000,
-                        trackScores: false,
-                      });
-                    return {
-                      originalMatchup: pm,
-                      projected: proj,
-                      sim,
+              if (semiResults.length >= 2) {
+                const finalsMatrix = (function buildFinalsMatrix(
+                  semiWithSims
+                ) {
+                  function erf(x) {
+                    const sign = x < 0 ? -1 : 1;
+                    x = Math.abs(x);
+                    const a1 = 0.254829592;
+                    const a2 = -0.284496736;
+                    const a3 = 1.421413741;
+                    const a4 = -1.453152027;
+                    const a5 = 1.061405429;
+                    const p = 0.3275911;
+                    const t = 1 / (1 + p * x);
+                    const y =
+                      1 -
+                      (((((a5 * t + a4) * t + a3) * t + a2) * t +
+                        a1) *
+                        t *
+                        Math.exp(-x * x));
+                    return sign * y;
+                  }
+                  function normalCdf(x) {
+                    return 0.5 * (1 + erf(x / Math.sqrt(2)));
+                  }
+  
+                  const teams = {};
+                  semiWithSims.forEach((m0) => {
+                    const a = m0.projected.projected.teamA;
+                    const b = m0.projected.projected.teamB;
+                    teams[a.team.teamDisplayName] = {
+                      mean: a.projection.totalMean,
+                      sd: a.projection.totalSd,
                     };
-                  })
-                  .filter(
-                    (r) =>
-                      r &&
-                      r.projected &&
-                      r.projected.projected &&
-                      r.sim
+                    teams[b.team.teamDisplayName] = {
+                      mean: b.projection.totalMean,
+                      sd: b.projection.totalSd,
+                    };
+                  });
+  
+                  const names = Object.keys(teams);
+                  const matrix = {};
+                  names.forEach((nameA) => {
+                    matrix[nameA] = {};
+                    names.forEach((nameB) => {
+                      if (nameA === nameB) return;
+                      const tA = teams[nameA];
+                      const tB = teams[nameB];
+                      const muDiff = tA.mean - tB.mean;
+                      const varDiff =
+                        tA.sd * tA.sd + tB.sd * tB.sd || 1;
+                      const z = muDiff / Math.sqrt(varDiff);
+                      matrix[nameA][nameB] = normalCdf(z);
+                    });
+                  });
+                  return matrix;
+                })(semiResults);
+  
+                champObj =
+                  window.ProjectionEngine.computeChampionshipOdds(
+                    semiResults[0],
+                    semiResults[1],
+                    finalsMatrix
                   );
   
-                if (semiResults.length >= 2) {
-                  // finals matrix from team means / SDs
-                  const finalsMatrix = (function buildFinalsMatrix(
-                    semiWithSims
-                  ) {
-                    function erf(x) {
-                      const sign = x < 0 ? -1 : 1;
-                      x = Math.abs(x);
-                      const a1 = 0.254829592;
-                      const a2 = -0.284496736;
-                      const a3 = 1.421413741;
-                      const a4 = -1.453152027;
-                      const a5 = 1.061405429;
-                      const p = 0.3275911;
-                      const t = 1 / (1 + p * x);
-                      const y =
-                        1 -
-                        (((((a5 * t + a4) * t + a3) * t + a2) * t +
-                          a1) *
-                          t *
-                          Math.exp(-x * x));
-                      return sign * y;
-                    }
-                    function normalCdf(x) {
-                      return 0.5 * (1 + erf(x / Math.sqrt(2)));
-                    }
-  
-                    const teams = {};
-                    semiWithSims.forEach((m0) => {
-                      const a = m0.projected.projected.teamA;
-                      const b = m0.projected.projected.teamB;
-                      teams[a.team.teamDisplayName] = {
-                        mean: a.projection.totalMean,
-                        sd: a.projection.totalSd,
-                      };
-                      teams[b.team.teamDisplayName] = {
-                        mean: b.projection.totalMean,
-                        sd: b.projection.totalSd,
-                      };
-                    });
-  
-                    const names = Object.keys(teams);
-                    const matrix = {};
-                    names.forEach((nameA) => {
-                      matrix[nameA] = {};
-                      names.forEach((nameB) => {
-                        if (nameA === nameB) return;
-                        const tA = teams[nameA];
-                        const tB = teams[nameB];
-                        const muDiff = tA.mean - tB.mean;
-                        const varDiff =
-                          tA.sd * tA.sd + tB.sd * tB.sd || 1;
-                        const z = muDiff / Math.sqrt(varDiff);
-                        matrix[nameA][nameB] = normalCdf(z);
-                      });
-                    });
-                    return matrix;
-                  })(semiResults);
-  
-                  champObj =
-                    window.ProjectionEngine.computeChampionshipOdds(
-                      semiResults[0],
-                      semiResults[1],
-                      finalsMatrix
-                    );
-  
-                  // Mark which matchup IDs are true semifinals for charts.
-                  const idSet = new Set();
-                  semiResults.forEach((r) => {
-                    const m0 = r.originalMatchup;
-                    const id =
-                      computeMatchupIdForWeek(m0, week) || null;
-                    if (id) idSet.add(id);
-                  });
-                  SEMI_MATCHUP_ID_SET =
-                    idSet.size > 0 ? idSet : null;
-  
-                  // Also mark entries as isSemi for card labels:
-                  if (SEMI_MATCHUP_ID_SET) {
-                    matchupEntries.forEach((e) => {
-                      if (SEMI_MATCHUP_ID_SET.has(e.id)) {
-                        e.isSemi = true;
-                      }
-                    });
-                  }
-                }
-              }
-            }
-          } catch (champErr) {
-            console.warn(
-              "[newsletter.js] Championship odds computation error:",
-              champErr
-            );
-          }
-        }
-  
-        CURRENT_MATCHUP_ENTRIES = matchupEntries;
-  
-        const mode = isHistoricalWeek ? "results" : "projections";
-        const matchupModels = buildMatchupModels(matchupEntries, week, {
-          mode,
-        });
-  
-        if (!matchupModels.length) {
-          if (matchupsContainer) {
-            matchupsContainer.innerHTML =
-              '<article class="matchup-card">' +
-              '<div class="matchup-header">' +
-              '<div class="matchup-teams">No projectable matchups for this week</div>' +
-              "</div>" +
-              '<div class="matchup-scores">' +
-              '<span class="small">Projections could not be generated. Check your player data.</span>' +
-              "</div>" +
-              "</article>";
-          }
-          if (newsletterContent) {
-            newsletterContent.innerHTML =
-              "<p>Matchups detected, but projections could not be generated.</p>";
-          }
-          renderSeasonOverview(bundle);
-          return;
-        }
-  
-        // ----------------------------------------------------
-        // Build recap phrases (results weeks only) via Supabase
-        // ----------------------------------------------------
-        let recapById = null;
-        if (
-            mode === "results" &&
-            window.PhraseEngine &&
-            typeof window.PhraseEngine.init === "function"
-          ) {
-            try {
-              await window.PhraseEngine.init();
-              if (typeof window.PhraseEngine.beginWeek === "function") {
-                window.PhraseEngine.beginWeek(week);
-              }
-
-              recapById = {};
-          
-              matchupEntries.forEach((entry) => {
-                const model = matchupModels.find((m) => m.id === entry.id);
-                if (!model) return;
-          
-                const teams = entry.teams || [];
-                const rawMatchupA = teams[0] || null;
-                const rawMatchupB = teams[1] || null;
-          
-                const rosterA =
-                  rawMatchupA && rosterById[rawMatchupA.rosterId]
-                    ? rosterById[rawMatchupA.rosterId]
-                    : null;
-                const rosterB =
-                  rawMatchupB && rosterById[rawMatchupB.rosterId]
-                    ? rosterById[rawMatchupB.rosterId]
-                    : null;
-          
-                const recap = window.PhraseEngine.buildResultSentence({
-                  model,
-                  entry,
-                  week,
-                  leagueName,
-                  rawMatchupA,
-                  rawMatchupB,
-                  rosterA,
-                  rosterB,
-                  allScoresThisWeek,
+                // Mark which matchup IDs are true semifinals for charts.
+                const idSet = new Set();
+                semiResults.forEach((r) => {
+                  const m0 = r.originalMatchup;
+                  const id =
+                    computeMatchupIdForWeek(m0, week) || null;
+                  if (id) idSet.add(id);
                 });
-          
-                if (recap) {
-                  recapById[model.id] = recap;
+                SEMI_MATCHUP_ID_SET =
+                  idSet.size > 0 ? idSet : null;
+  
+                // Also mark entries as isSemi for card labels:
+                if (SEMI_MATCHUP_ID_SET) {
+                  matchupEntries.forEach((e) => {
+                    if (SEMI_MATCHUP_ID_SET.has(e.id)) {
+                      e.isSemi = true;
+                    }
+                  });
                 }
-              });
-            } catch (phraseErr) {
-              console.warn("[newsletter.js] PhraseEngine error:", phraseErr);
-            }
-          }
-          
-  
-        // Render matchup cards
-        if (matchupsContainer) {
-          matchupsContainer.innerHTML = matchupModels
-            .map((m) => renderMatchupCard(m))
-            .join("");
-  
-          matchupsContainer.onclick = (e) => {
-            const card = e.target.closest(".matchup-card");
-            if (!card || !card.dataset.matchupId) return;
-            showDetailForMatchup(card.dataset.matchupId);
-  
-            // Visually mark selected
-            matchupsContainer
-              .querySelectorAll(".matchup-card")
-              .forEach((c) => c.classList.remove("selected"));
-            card.classList.add("selected");
-          };
-        }
-  
-        // Render newsletter body
-        if (newsletterContent) {
-            newsletterContent.innerHTML = buildNewsletterHtml(
-              leagueName,
-              week,
-              matchupModels,
-              champObj,
-              { mode, recapById }
-            );
-          
-            // Click handler: any .matchup-card inside the newsletter should show detail
-            newsletterContent.onclick = (e) => {
-              const card = e.target.closest(".matchup-card");
-              if (!card || !card.dataset.matchupId) return;
-          
-              showDetailForMatchup(card.dataset.matchupId);
-          
-              // Visually mark selected within the newsletter region
-              newsletterContent
-                .querySelectorAll(".matchup-card")
-                .forEach((c) => c.classList.remove("selected"));
-              card.classList.add("selected");
-            };
-          }
-          
-  
-        // Also update Season Overview tab
-        renderSeasonOverview(bundle);
-  
-        // Charts: only meaningful in projection mode
-        if (window.PlayoffCharts) {
-          if (!isHistoricalWeek) {
-            try {
-              // Only use true semifinals if we detected them; otherwise use all.
-              const modelSource =
-                SEMI_MATCHUP_ID_SET && SEMI_MATCHUP_ID_SET.size
-                  ? matchupModels.filter((m) =>
-                      SEMI_MATCHUP_ID_SET.has(m.id)
-                    )
-                  : matchupModels;
-  
-              const semisForChart = modelSource.map((m) => ({
-                id: m.id,
-                label: m.nameA + " vs " + m.nameB,
-                favoriteName: m.favoriteName || m.nameA,
-                favoriteWinProb:
-                  m.favoriteWinProb != null
-                    ? m.favoriteWinProb
-                    : m.winA,
-                underdogName: m.underdogName || m.nameB,
-              }));
-  
-              window.PlayoffCharts.renderSemifinalOdds(
-                "semifinal-odds-chart",
-                semisForChart
-              );
-            } catch (err) {
-              console.warn(
-                "[newsletter.js] Semifinal/all-matchup chart render error:",
-                err
-              );
-            }
-  
-            if (champObj) {
-              try {
-                const champArray = Object.entries(champObj).map(
-                  ([teamName, info]) => ({
-                    teamName,
-                    probability: info.titleOdds || 0,
-                  })
-                );
-                window.PlayoffCharts.renderChampionshipOdds(
-                  "title-odds-chart",
-                  champArray
-                );
-              } catch (err2) {
-                console.warn(
-                  "[newsletter.js] Championship chart render error:",
-                  err2
-                );
               }
-            } else {
-              try {
-                window.PlayoffCharts.renderChampionshipOdds(
-                  "title-odds-chart",
-                  []
-                );
-              } catch (_) {}
+            }
+          }
+        } catch (champErr) {
+          console.warn(
+            "[newsletter.js] Championship odds computation error:",
+            champErr
+          );
+        }
+      }
+  
+      CURRENT_MATCHUP_ENTRIES = matchupEntries;
+  
+      const mode = isHistoricalWeek ? "results" : "projections";
+      const matchupModels = buildMatchupModels(matchupEntries, week, {
+        mode,
+      });
+  
+      if (!matchupModels.length) {
+        if (matchupsContainer) {
+          matchupsContainer.innerHTML =
+            '<article class="matchup-card">' +
+            '<div class="matchup-header">' +
+            '<div class="matchup-teams">No projectable matchups for this week</div>' +
+            "</div>" +
+            '<div class="matchup-scores">' +
+            '<span class="small">Projections could not be generated. Check your player data.</span>' +
+            "</div>" +
+            "</article>";
+        }
+        if (newsletterContent) {
+          newsletterContent.innerHTML =
+            "<p>Matchups detected, but projections could not be generated.</p>";
+        }
+        renderSeasonOverview(bundle);
+        return;
+      }
+  
+      // ----------------------------------------------------
+      // Build recap phrases (results weeks only) via Supabase
+      // ----------------------------------------------------
+      let recapById = null;
+      if (
+        mode === "results" &&
+        window.PhraseEngine &&
+        typeof window.PhraseEngine.init === "function"
+      ) {
+        try {
+          await window.PhraseEngine.init();
+          if (typeof window.PhraseEngine.beginWeek === "function") {
+            window.PhraseEngine.beginWeek(week);
+          }
+  
+          recapById = {};
+  
+          matchupEntries.forEach((entry) => {
+            const model = matchupModels.find((m) => m.id === entry.id);
+            if (!model) return;
+  
+            const teams = entry.teams || [];
+            const rawMatchupA = teams[0] || null;
+            const rawMatchupB = teams[1] || null;
+  
+            const rosterA =
+              rawMatchupA && rosterById[rawMatchupA.rosterId]
+                ? rosterById[rawMatchupA.rosterId]
+                : null;
+            const rosterB =
+              rawMatchupB && rosterById[rawMatchupB.rosterId]
+                ? rosterById[rawMatchupB.rosterId]
+                : null;
+  
+            const recap = window.PhraseEngine.buildResultSentence({
+              model,
+              entry,
+              week,
+              leagueName,
+              rawMatchupA,
+              rawMatchupB,
+              rosterA,
+              rosterB,
+              allScoresThisWeek,
+            });
+  
+            if (recap) {
+              recapById[model.id] = recap;
+            }
+          });
+        } catch (phraseErr) {
+          console.warn("[newsletter.js] PhraseEngine error:", phraseErr);
+        }
+      }
+  
+      // Render matchup cards
+      if (matchupsContainer) {
+        matchupsContainer.innerHTML = matchupModels
+          .map((m) => renderMatchupCard(m))
+          .join("");
+  
+        matchupsContainer.onclick = (e) => {
+          const card = e.target.closest(".matchup-card");
+          if (!card || !card.dataset.matchupId) return;
+          showDetailForMatchup(card.dataset.matchupId);
+  
+          // Visually mark selected
+          matchupsContainer
+            .querySelectorAll(".matchup-card")
+            .forEach((c) => c.classList.remove("selected"));
+          card.classList.add("selected");
+        };
+      }
+  
+      // Render newsletter body
+      if (newsletterContent) {
+        newsletterContent.innerHTML = buildNewsletterHtml(
+          leagueName,
+          week,
+          matchupModels,
+          champObj,
+          { mode, recapById }
+        );
+  
+        // Click handler: any .matchup-card inside the newsletter should show detail
+        newsletterContent.onclick = (e) => {
+          const card = e.target.closest(".matchup-card");
+          if (!card || !card.dataset.matchupId) return;
+  
+          showDetailForMatchup(card.dataset.matchupId);
+  
+          // Visually mark selected within the newsletter region
+          newsletterContent
+            .querySelectorAll(".matchup-card")
+            .forEach((c) => c.classList.remove("selected"));
+          card.classList.add("selected");
+        };
+      }
+  
+      // Also update Season Overview tab
+      renderSeasonOverview(bundle);
+  
+      // Charts: only meaningful in projection mode
+      if (window.PlayoffCharts) {
+        if (!isHistoricalWeek) {
+          try {
+            // Only use true semifinals if we detected them; otherwise use all.
+            const modelSource =
+              SEMI_MATCHUP_ID_SET && SEMI_MATCHUP_ID_SET.size
+                ? matchupModels.filter((m) =>
+                    SEMI_MATCHUP_ID_SET.has(m.id)
+                  )
+                : matchupModels;
+  
+            const semisForChart = modelSource.map((m) => ({
+              id: m.id,
+              label: m.nameA + " vs " + m.nameB,
+              favoriteName: m.favoriteName || m.nameA,
+              favoriteWinProb:
+                m.favoriteWinProb != null
+                  ? m.favoriteWinProb
+                  : m.winA,
+              underdogName: m.underdogName || m.nameB,
+            }));
+  
+            window.PlayoffCharts.renderSemifinalOdds(
+              "semifinal-odds-chart",
+              semisForChart
+            );
+          } catch (err) {
+            console.warn(
+              "[newsletter.js] Semifinal/all-matchup chart render error:",
+              err
+            );
+          }
+  
+          if (champObj) {
+            try {
+              const champArray = Object.entries(champObj).map(
+                ([teamName, info]) => ({
+                  teamName,
+                  probability: info.titleOdds || 0,
+                })
+              );
+              window.PlayoffCharts.renderChampionshipOdds(
+                "title-odds-chart",
+                champArray
+              );
+            } catch (err2) {
+              console.warn(
+                "[newsletter.js] Championship chart render error:",
+                err2
+              );
             }
           } else {
-            // Historical week: clear charts
             try {
-              window.PlayoffCharts.renderSemifinalOdds(
-                "semifinal-odds-chart",
-                []
-              );
               window.PlayoffCharts.renderChampionshipOdds(
                 "title-odds-chart",
                 []
               );
             } catch (_) {}
           }
-        }
-      } catch (err3) {
-        console.error("[newsletter.js] loadWeek error:", err3);
-        if (matchupsContainer) {
-          matchupsContainer.innerHTML =
-            '<article class="matchup-card">' +
-            '<div class="matchup-header">' +
-            '<div class="matchup-teams">Error loading data from Sleeper</div>' +
-            "</div>" +
-            '<div class="matchup-scores">' +
-            '<span class="small">' +
-            (err3.message || "Unknown error") +
-            "</span>" +
-            "</div>" +
-            "</article>";
-        }
-        if (newsletterContent) {
-          newsletterContent.innerHTML =
-            "<p>Something went wrong while pulling projections and simulations. Open the browser console for more detail and confirm your API calls are succeeding.</p>";
+        } else {
+          // Historical week: clear charts
+          try {
+            window.PlayoffCharts.renderSemifinalOdds(
+              "semifinal-odds-chart",
+              []
+            );
+            window.PlayoffCharts.renderChampionshipOdds(
+              "title-odds-chart",
+              []
+            );
+          } catch (_) {}
         }
       }
-
-      if (window.PlayoffInsightsApp && typeof window.PlayoffInsightsApp.renderFromBundle === "function") {
-        window.PlayoffInsightsApp.renderFromBundle();
+    } catch (err3) {
+      console.error("[newsletter.js] loadWeek error:", err3);
+      if (matchupsContainer) {
+        matchupsContainer.innerHTML =
+          '<article class="matchup-card">' +
+          '<div class="matchup-header">' +
+          '<div class="matchup-teams">Error loading data from Sleeper</div>' +
+          "</div>" +
+          '<div class="matchup-scores">' +
+          '<span class="small">' +
+          (err3.message || "Unknown error") +
+          "</span>" +
+          "</div>" +
+          "</article>";
       }
-      
+      if (newsletterContent) {
+        newsletterContent.innerHTML =
+          "<p>Something went wrong while pulling projections and simulations. Open the browser console for more detail and confirm your API calls are succeeding.</p>";
+      }
     }
+  
+    // Insights tab hook
+    if (
+      window.PlayoffInsightsApp &&
+      typeof window.PlayoffInsightsApp.renderFromBundle === "function"
+    ) {
+      window.PlayoffInsightsApp.renderFromBundle();
+    }
+  }
+  
   
     // -----------------------
     // Bootstrap
@@ -1682,6 +1715,8 @@
       if (Number.isFinite(initialWeek)) {
         loadWeek(initialWeek);
       }
+
+
     }
   
     document.addEventListener("DOMContentLoaded", init);

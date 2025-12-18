@@ -8,12 +8,12 @@
     --bg-gradient-top: #05081f;
     --bg-gradient-bottom: #020314;
   
-    --bg-panel: rgba(8, 12, 30, 0.98);
-    --bg-card: rgba(11, 16, 36, 0.98);
-    --bg-card-soft: rgba(15, 23, 42, 0.9);
+    --bg-panel: rgba(8, 12, 30, 0.92);
+    --bg-card: rgba(11, 16, 36, 0.92);
+    --bg-card-soft: rgba(15, 23, 42, 0.86);
   
-    --border-subtle: #111827;
-    --border-strong: #1f2937;
+    --border-subtle: rgba(31, 41, 55, 0.55);
+    --border-strong: rgba(55, 65, 81, 0.9);
   
     --accent: #22c55e;
     --accent-soft: rgba(34, 197, 94, 0.18);
@@ -29,12 +29,14 @@
     --radius-card-sm: 12px;
     --radius-pill: 999px;
   
-    --shadow-card: 0 24px 60px rgba(0, 0, 0, 0.7);
+    --shadow-panel: 0 22px 50px rgba(0, 0, 0, 0.62);
+    --shadow-card: 0 14px 34px rgba(0, 0, 0, 0.45);
+    --shadow-soft: 0 10px 26px rgba(0, 0, 0, 0.35);
   
     --font-size-xs: 0.75rem;
-    --font-size-sm: 0.8rem;
-    --font-size-md: 0.9rem;
-    --font-size-lg: 1rem;
+    --font-size-sm: 0.82rem;
+    --font-size-md: 0.94rem;
+    --font-size-lg: 1.05rem;
   }
   
   /* ------------------------------------------------------
@@ -49,7 +51,7 @@
   
   body {
     margin: 0;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
       "Segoe UI", sans-serif;
     background:
       radial-gradient(circle at 80% 0%, rgba(56, 189, 248, 0.14), transparent 55%),
@@ -59,7 +61,9 @@
     min-height: 100vh;
   }
   
-  /* Utilities */
+  a {
+    color: inherit;
+  }
   
   .small {
     font-size: var(--font-size-xs);
@@ -71,13 +75,26 @@
     color: var(--text-soft);
   }
   
+  .muted {
+    color: var(--text-soft);
+    opacity: 0.85;
+  }
+  
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+  
   /* ------------------------------------------------------
      APP SHELL
   ------------------------------------------------------- */
   
   #app {
     max-width: 1500px;
-    margin: 24px auto 40px;
+    margin: 24px auto 44px;
     padding: 0 20px;
   }
   
@@ -86,19 +103,21 @@
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
-    gap: 8px;
+    margin-bottom: 14px;
+    gap: 10px;
   }
   
   .top-bar-title {
-    font-size: 1.4rem;
+    font-family: "Space Grotesk", Inter, system-ui, sans-serif;
+    font-size: 1.55rem;
     font-weight: 600;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.02em;
   }
   
   .top-bar-subtitle {
     font-size: var(--font-size-xs);
     color: var(--text-soft);
+    margin-top: 2px;
   }
   
   /* Controls (week + refresh) */
@@ -113,16 +132,16 @@
   .controls label {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
   
   .controls select,
   .controls button {
-    background: #020617;
+    background: rgba(2, 6, 23, 0.8);
     border-radius: var(--radius-pill);
     border: 1px solid var(--border-strong);
     color: var(--text-main);
-    padding: 6px 12px;
+    padding: 7px 12px;
     font-size: var(--font-size-sm);
   }
   
@@ -132,7 +151,7 @@
   
   .controls button {
     cursor: pointer;
-    border-color: var(--accent);
+    border-color: rgba(34, 197, 94, 0.75);
     transition:
       background 0.15s ease,
       box-shadow 0.15s ease,
@@ -142,7 +161,7 @@
   
   .controls button:hover {
     background: var(--accent-soft);
-    box-shadow: 0 10px 25px rgba(34, 197, 94, 0.35);
+    box-shadow: 0 12px 28px rgba(34, 197, 94, 0.28);
     transform: translateY(-1px);
   }
   
@@ -159,21 +178,50 @@
     border-radius: var(--radius-card);
     border: 1px solid var(--border-subtle);
     padding: 16px 16px 18px;
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-panel);
     min-height: 260px;
+    backdrop-filter: blur(10px);
   }
   
   .panel h2 {
     font-size: var(--font-size-md);
     font-weight: 600;
-    margin: 0 0 12px;
-    letter-spacing: 0.08em;
+    margin: 0 0 10px;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--text-soft);
   }
   
   .subheading {
     margin-top: 16px;
+  }
+  
+  /* Section header row (newspaper vibe) */
+  .section-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    margin: 10px 0 8px;
+  }
+  
+  .section-kicker {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--text-soft);
+  }
+  
+  .section-note {
+    font-size: var(--font-size-xs);
+    color: var(--text-soft);
+  }
+  
+  .hr-soft {
+    height: 1px;
+    border: none;
+    background: rgba(55, 65, 81, 0.6);
+    margin: 10px 0;
   }
   
   /* ------------------------------------------------------
@@ -183,9 +231,9 @@
   .top-tabs {
     display: inline-flex;
     padding: 4px;
-    background: rgba(15, 23, 42, 0.9);
+    background: rgba(15, 23, 42, 0.85);
     border-radius: var(--radius-pill);
-    border: 1px solid rgba(55, 65, 81, 0.9);
+    border: 1px solid rgba(55, 65, 81, 0.85);
     margin-bottom: 10px;
     gap: 2px;
   }
@@ -225,22 +273,194 @@
   }
   
   /* ------------------------------------------------------
-     MATCHUP LIST
+     WEEK BRIEF (NEW)
+  ------------------------------------------------------- */
+  
+  .week-brief {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(55, 65, 81, 0.6);
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin: 10px 0 12px;
+    box-shadow: var(--shadow-soft);
+  }
+  
+  .week-brief-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  
+  .week-brief-kicker {
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+  }
+  
+  .week-brief-title {
+    font-weight: 600;
+    margin-top: 3px;
+  }
+  
+  .week-brief-toggle {
+    background: transparent;
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    color: var(--text-main);
+    border-radius: 999px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+  }
+  
+  .week-brief-toggle:hover {
+    transform: translateY(-1px);
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.45);
+  }
+  
+  .week-brief-body {
+    margin-top: 8px;
+    color: var(--text-soft);
+    display: none; /* collapsed by default */
+  }
+  
+  .week-brief.open .week-brief-body {
+    display: block;
+  }
+  
+  /* ------------------------------------------------------
+     NEWSLETTER LAYOUT (NEW)
+  ------------------------------------------------------- */
+  
+  .newsletter-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 420px;
+    gap: 12px;
+    align-items: start;
+  }
+  
+  @media (max-width: 1100px) {
+    .newsletter-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .newsletter-left {
+    min-width: 0;
+  }
+  
+  .newsletter-right {
+    min-width: 0;
+  }
+  
+  .matchup-detail-sticky {
+    position: sticky;
+    top: 12px;
+  }
+  
+  @media (max-width: 1100px) {
+    .matchup-detail-sticky {
+      position: static;
+      top: auto;
+    }
+  }
+  
+  /* Detail shell */
+  .detail-shell {
+    background: rgba(2, 6, 23, 0.48);
+    border: 1px solid rgba(55, 65, 81, 0.65);
+    border-radius: 14px;
+    padding: 10px 10px 12px;
+    box-shadow: var(--shadow-soft);
+  }
+  
+  .detail-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  
+  .detail-kicker {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--text-soft);
+  }
+  
+  .detail-title {
+    margin-top: 3px;
+    font-weight: 600;
+    font-size: var(--font-size-md);
+    color: var(--text-main);
+  }
+  
+  /* Segmented control (Starters / All) */
+  .segmented {
+    display: inline-flex;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(55, 65, 81, 0.85);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 2px;
+    user-select: none;
+  }
+  
+  .seg-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-soft);
+    font-size: var(--font-size-xs);
+    padding: 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    white-space: nowrap;
+  }
+  
+  .seg-btn:hover {
+    transform: translateY(-1px);
+  }
+  
+  .seg-btn.active {
+    background: rgba(34, 197, 94, 0.18);
+    color: #ecfdf5;
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.45);
+  }
+  
+  /* Newsletter body container (no longer centered/narrow) */
+  .newsletter-body {
+    max-width: 100%;
+    margin: 0;
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+  }
+  
+  /* Optional: hide the old bottom charts row for now */
+  .newsletter-charts-row {
+    display: none;
+  }
+  
+  /* ------------------------------------------------------
+     MATCHUP LIST (shared styles)
   ------------------------------------------------------- */
   
   #matchups-container {
-    margin-top: 4px;
+    margin-top: 6px;
   }
   
   /* Card shell */
-  
   .matchup-card {
     position: relative;
     background: var(--bg-card);
     border-radius: var(--radius-card-sm);
     border: 1px solid var(--border-subtle);
-    padding: 10px 14px 12px;
-    margin-bottom: 10px;
+    padding: 8px 12px 10px;
+    margin-bottom: 8px;
     cursor: pointer;
     transition:
       border-color 0.15s ease,
@@ -262,14 +482,14 @@
   }
   
   .matchup-card:hover {
-    border-color: rgba(34, 197, 94, 0.7);
-    box-shadow: 0 14px 40px rgba(15, 118, 110, 0.35);
+    border-color: rgba(34, 197, 94, 0.6);
+    box-shadow: 0 14px 36px rgba(15, 118, 110, 0.28);
     transform: translateY(-1px);
   }
   
   .matchup-card.selected {
-    border-color: var(--accent);
-    box-shadow: 0 18px 45px rgba(34, 197, 94, 0.5);
+    border-color: rgba(34, 197, 94, 0.85);
+    box-shadow: 0 16px 40px rgba(34, 197, 94, 0.35);
   }
   
   .matchup-header {
@@ -280,7 +500,7 @@
   }
   
   .matchup-teams {
-    font-size: 0.95rem;
+    font-size: 0.94rem;
     font-weight: 500;
   }
   
@@ -290,11 +510,10 @@
   }
   
   /* Two-side score row */
-  
   .matchup-scores-row {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    gap: 12px;
     margin-top: 4px;
   }
   
@@ -307,7 +526,7 @@
   .matchup-score-line {
     display: flex;
     align-items: baseline;
-    gap: 4px;
+    gap: 6px;
   }
   
   .matchup-score-main {
@@ -325,7 +544,7 @@
   
   .matchup-score-side.winner .matchup-score-main {
     color: var(--accent);
-    text-shadow: 0 0 12px rgba(34, 197, 94, 0.35);
+    text-shadow: 0 0 12px rgba(34, 197, 94, 0.25);
   }
   
   .matchup-score-side.loser .matchup-score-main {
@@ -336,33 +555,24 @@
     color: var(--text-soft);
   }
   
-  .matchup-chip-row {
-    margin-top: 2px;
-  }
-  
-  .matchup-meta-bottom {
-    margin-top: 6px;
-  }
-  
   /* Chips */
-  
   .tag {
     display: inline-block;
     border-radius: var(--radius-pill);
     padding: 2px 8px;
     font-size: var(--font-size-xs);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid rgba(55, 65, 81, 0.6);
     color: var(--text-soft);
     margin-left: 4px;
   }
   
   .tag-favorite {
-    border-color: var(--accent);
+    border-color: rgba(34, 197, 94, 0.55);
     color: var(--accent);
   }
   
   .tag-underdog {
-    border-color: var(--danger);
+    border-color: rgba(249, 115, 115, 0.65);
     color: var(--danger);
   }
   
@@ -371,18 +581,32 @@
   ------------------------------------------------------- */
   
   #matchup-detail-container {
-    margin-top: 10px;
-    max-height: 360px;
+    margin-top: 6px;
+    max-height: calc(100vh - 220px);
     overflow: auto;
-    border-radius: 14px;
-    border: 1px solid rgba(31, 41, 55, 0.9);
+    border-radius: 12px;
+    border: 1px solid rgba(31, 41, 55, 0.85);
     background: radial-gradient(
       circle at top left,
-      rgba(56, 189, 248, 0.12),
-      rgba(15, 23, 42, 0.98)
+      rgba(56, 189, 248, 0.10),
+      rgba(15, 23, 42, 0.92)
     );
     padding: 8px 10px;
-    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.85);
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.65);
+  
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  
+  #matchup-detail-container::-webkit-scrollbar {
+    width: 6px;
+  }
+  #matchup-detail-container::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  #matchup-detail-container::-webkit-scrollbar-thumb {
+    background-color: rgba(55, 65, 81, 0.9);
+    border-radius: 99px;
   }
   
   .detail-layout {
@@ -419,7 +643,6 @@
   }
   
   /* Player tables */
-  
   .detail-table {
     width: 100%;
     border-collapse: collapse;
@@ -430,9 +653,9 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: rgba(15, 23, 42, 0.98);
-    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
-    padding: 4px 6px;
+    background: rgba(15, 23, 42, 0.96);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    padding: 5px 6px;
     text-align: left;
     font-weight: 500;
     color: var(--text-soft);
@@ -440,7 +663,6 @@
   }
   
   /* Column toggle affordance */
-  
   .detail-table th[data-col] {
     cursor: pointer;
   }
@@ -454,28 +676,29 @@
   }
   
   .detail-table tbody tr:nth-child(odd) {
-    background: rgba(15, 23, 42, 0.9);
+    background: rgba(15, 23, 42, 0.86);
   }
   
   .detail-table tbody tr:nth-child(even) {
-    background: rgba(15, 23, 42, 0.82);
+    background: rgba(15, 23, 42, 0.78);
   }
   
   .detail-table td {
-    padding: 4px 6px;
-    border-bottom: 1px solid rgba(15, 23, 42, 1);
+    padding: 5px 6px;
+    border-bottom: 1px solid rgba(2, 6, 23, 0.9);
     font-variant-numeric: tabular-nums;
   }
   
   .detail-table td:first-child {
     width: 32px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     color: var(--accent);
+    letter-spacing: 0.04em;
   }
   
   .detail-table td:nth-child(2) {
-    max-width: 140px;
+    max-width: 160px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -483,6 +706,40 @@
   
   .detail-table td:nth-child(n + 3) {
     text-align: right;
+  }
+  
+  /* ------------------------------------------------------
+     LEAGUE PULSE (NEW)
+  ------------------------------------------------------- */
+  
+  .pulse-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  
+  @media (max-width: 1100px) {
+    .pulse-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .pulse-card {
+    background: rgba(15, 23, 42, 0.78);
+    border-radius: 14px;
+    border: 1px solid rgba(55, 65, 81, 0.6);
+    padding: 10px 12px 12px;
+    box-shadow: var(--shadow-card);
+    min-height: 160px;
+  }
+  
+  .pulse-card h3 {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-soft);
   }
   
   /* ------------------------------------------------------
@@ -500,7 +757,7 @@
     max-height: 220px;
     overflow-y: auto;
     padding: 8px;
-    background: rgba(2, 6, 23, 0.6);
+    background: rgba(2, 6, 23, 0.55);
     border: 1px solid var(--border-subtle);
     border-radius: 12px;
   
@@ -515,40 +772,37 @@
     background: transparent;
   }
   .roster-selector-grid::-webkit-scrollbar-thumb {
-    background-color: var(--border-strong);
+    background-color: rgba(55, 65, 81, 0.9);
     border-radius: 99px;
   }
   
-  /* Team chips */
-  
   .roster-select-btn {
-    background: var(--bg-card);
+    background: rgba(11, 16, 36, 0.86);
     border: 1px solid var(--border-subtle);
     color: var(--text-soft);
     padding: 9px 10px;
-    border-radius: 9px;
+    border-radius: 10px;
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.86rem;
     text-align: left;
     transition: all 0.2s ease;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    position: relative;
   }
   
   .roster-select-btn:hover {
-    background: var(--bg-panel);
-    border-color: var(--text-soft);
+    background: rgba(8, 12, 30, 0.92);
+    border-color: rgba(148, 163, 184, 0.35);
     color: var(--text-main);
     transform: translateY(-1px);
   }
   
   .roster-select-btn.selected {
-    background: rgba(34, 197, 94, 0.16);
-    border-color: var(--accent);
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(34, 197, 94, 0.6);
     color: #f9fafb;
-    box-shadow: 0 0 12px rgba(34, 197, 94, 0.3);
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.22);
     font-weight: 600;
   }
   
@@ -559,18 +813,19 @@
   }
   
   .roster-card {
-    background: var(--bg-card-soft);
+    background: rgba(15, 23, 42, 0.78);
     border-radius: 14px;
     border: 1px solid var(--border-subtle);
     padding: 10px 12px;
     margin-bottom: 10px;
+    box-shadow: var(--shadow-soft);
   }
   
   .roster-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   
   .roster-header strong {
@@ -579,19 +834,19 @@
   
   .roster-player {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) auto;
-    gap: 6px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px 90px;
+    gap: 8px;
     align-items: center;
-    font-size: var(--font-size-xs);
-    padding: 3px 0;
+    font-size: var(--font-size-sm);
+    padding: 4px 0;
   }
   
   .player-pos {
-    font-weight: 700;
+    font-weight: 800;
     font-size: var(--font-size-xs);
     color: var(--accent);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
   }
   
   .player-name {
@@ -606,26 +861,24 @@
     text-align: right;
     font-size: var(--font-size-xs);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
   }
   
-  /* Optional KTC value chip */
-  
-  .ktc-chip {
-    display: inline-flex;
-    align-items: center;
-    padding: 1px 6px;
-    margin-left: 6px;
-    border-radius: 999px;
-    border: 1px solid rgba(34, 197, 94, 0.4);
-    font-size: 0.7rem;
-    color: var(--accent);
-    background: rgba(34, 197, 94, 0.07);
+  .player-ktc {
+    text-align: right;
     font-variant-numeric: tabular-nums;
+    font-size: var(--font-size-xs);
+    color: rgba(229, 231, 235, 0.95);
+  }
+  
+  .player-ktc-rank {
+    display: inline-block;
+    margin-left: 4px;
+    opacity: 0.7;
   }
   
   /* ------------------------------------------------------
-     SEASON OVERVIEW
+     SEASON OVERVIEW / INSIGHTS (kept close to your original)
   ------------------------------------------------------- */
   
   .season-overview {
@@ -648,13 +901,12 @@
     margin: 0 0 6px;
   }
   
-  /* Standings */
-  
   .season-standings-container {
     border-radius: 12px;
     border: 1px solid var(--border-subtle);
-    background: var(--bg-card-soft);
+    background: rgba(15, 23, 42, 0.78);
     padding: 8px 10px;
+    box-shadow: var(--shadow-soft);
   }
   
   .season-standings-table {
@@ -666,7 +918,7 @@
   .season-standings-table th,
   .season-standings-table td {
     padding: 6px 8px;
-    border-bottom: 1px solid rgba(15, 23, 42, 0.85);
+    border-bottom: 1px solid rgba(2, 6, 23, 0.9);
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
@@ -683,18 +935,18 @@
   }
   
   .season-standings-table thead th {
-    background: rgba(15, 23, 42, 0.98);
+    background: rgba(15, 23, 42, 0.96);
     position: sticky;
     top: 0;
     z-index: 1;
   }
   
   .season-standings-table tbody tr:nth-child(odd) {
-    background: rgba(15, 23, 42, 0.9);
+    background: rgba(15, 23, 42, 0.84);
   }
   
   .season-standings-table tbody tr:nth-child(even) {
-    background: rgba(15, 23, 42, 0.8);
+    background: rgba(15, 23, 42, 0.76);
   }
   
   .season-standings-table tbody tr:hover {
@@ -704,155 +956,44 @@
   .season-metrics-container {
     border-radius: 12px;
     border: 1px solid var(--border-subtle);
-    background: var(--bg-card-soft);
+    background: rgba(15, 23, 42, 0.78);
     padding: 10px 12px;
     font-size: var(--font-size-sm);
-    line-height: 1.4;
+    line-height: 1.45;
+    box-shadow: var(--shadow-soft);
   }
   
   .season-metrics-container p {
     margin: 4px 0;
   }
   
-  /* ------------------------------------------------------
-     PLAYOFF BRACKET
-  ------------------------------------------------------- */
-  
-  .bracket-root {
-    margin-top: 6px;
-    padding: 10px 6px 4px;
+  /* Generic chart cards */
+  .chart-card {
+    background: rgba(15, 23, 42, 0.78);
     border-radius: 12px;
     border: 1px solid var(--border-subtle);
-    background: radial-gradient(
-      circle at top left,
-      rgba(56, 189, 248, 0.12),
-      rgba(15, 23, 42, 0.95)
-    );
-    display: flex;
-    gap: 14px;
-    overflow-x: auto;
-  
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
-  }
-  
-  .bracket-root::-webkit-scrollbar {
-    height: 6px;
-  }
-  .bracket-root::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .bracket-root::-webkit-scrollbar-thumb {
-    background-color: var(--border-strong);
-    border-radius: 99px;
-  }
-  
-  .bracket-round-column {
-    min-width: 220px;
+    padding: 10px 12px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    box-shadow: var(--shadow-soft);
   }
   
-  .bracket-round-title {
-    font-size: var(--font-size-xs);
+  .chart-card h3 {
+    font-size: var(--font-size-sm);
+    margin: 0 0 6px;
+    color: var(--text-soft);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-soft);
-    margin-bottom: 2px;
+    letter-spacing: 0.06em;
   }
   
-  .bracket-matchup {
-    background: var(--bg-card-soft);
-    border-radius: 12px;
-    border: 1px solid var(--border-subtle);
-    padding: 8px 9px;
-    position: relative;
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
-  }
-  
-  .bracket-matchup::before {
-    content: "";
-    position: absolute;
-    left: -6px;
-    top: 16px;
-    bottom: 16px;
-    width: 2px;
-    border-radius: 99px;
-    background: linear-gradient(to bottom, var(--accent), var(--accent-cyan));
-    opacity: 0.9;
-  }
-  
-  .bracket-matchup-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 4px;
-  }
-  
-  .bracket-matchup-label {
-    font-size: var(--font-size-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-soft);
-  }
-  
-  .bracket-matchup-week {
-    font-size: var(--font-size-xs);
-    color: var(--text-faint);
-  }
-  
-  .bracket-team-slot {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 6px;
-    font-size: var(--font-size-xs);
-    padding: 3px 0;
-  }
-  
-  .bracket-team-name {
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .bracket-team-name.winner {
-    color: var(--accent);
-    text-shadow: 0 0 10px rgba(34, 197, 94, 0.45);
-  }
-  
-  .bracket-team-name.loser {
-    color: var(--text-faint);
-  }
-  
-  .bracket-team-name.bye {
-    color: var(--text-soft);
-    font-style: italic;
-  }
-  
-  .bracket-team-meta {
-    font-size: var(--font-size-xs);
-    color: var(--text-soft);
-    white-space: nowrap;
-  }
-  
-  .bracket-tbd {
-    font-style: italic;
-    color: var(--text-soft);
+  .chart-card canvas {
+    flex: 1 1 auto;
+    width: 100% !important;
   }
   
   /* ------------------------------------------------------
-     NEWSLETTER – MATCHUPS + ODDS
+     NEWSLETTER CARD STYLES (kept, slightly tightened)
   ------------------------------------------------------- */
-  
-  .newsletter-body {
-    max-width: 1100px;
-    margin: 0 auto;
-    font-size: var(--font-size-sm);
-    line-height: 1.5;
-  }
   
   .newsletter-week-header {
     margin-bottom: 10px;
@@ -872,21 +1013,19 @@
     color: var(--text-soft);
   }
   
-  /* Matchup cards list */
-  
   .newsletter-matchups-list {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin-top: 12px;
+    margin-top: 10px;
   }
   
   .newsletter-card {
-    background: var(--bg-card-soft);
+    background: rgba(15, 23, 42, 0.78);
     border-radius: 14px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid rgba(55, 65, 81, 0.55);
     padding: 10px 12px 12px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--shadow-card);
   }
   
   .newsletter-matchup-card .nm-header-row {
@@ -930,8 +1069,6 @@
     color: var(--text-soft);
   }
   
-  /* Small pill tags for context */
-  
   .nm-tag {
     border-radius: var(--radius-pill);
     padding: 2px 10px;
@@ -942,247 +1079,17 @@
   }
   
   .nm-tag.close {
-    border-color: var(--accent-cyan);
+    border-color: rgba(34, 211, 238, 0.65);
     color: var(--accent-cyan);
   }
   
   .nm-tag.blowout {
-    border-color: var(--danger);
+    border-color: rgba(249, 115, 115, 0.65);
     color: var(--danger);
   }
   
   .nm-tag.track {
-    border-color: var(--accent);
+    border-color: rgba(34, 197, 94, 0.65);
     color: var(--accent);
   }
-  
-  /* Championship odds card */
-  
-  .newsletter-champ-card {
-    margin-top: 14px;
-  }
-  
-  .newsletter-champ-card h3 {
-    margin: 0 0 6px;
-    font-size: var(--font-size-sm);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-soft);
-  }
-  
-  /* Odds table */
-  
-  .odds-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
-    font-size: var(--font-size-xs);
-  }
-  
-  .odds-table th,
-  .odds-table td {
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border-subtle);
-    text-align: left;
-    font-variant-numeric: tabular-nums;
-  }
-  
-  /* Newsletter charts row (SEMIS + TITLE ODDS) */
-  
-  .newsletter-charts-row {
-    margin-top: 18px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 12px;
-  }
-  
-  .newsletter-charts-row .chart-card {
-    height: 220px;
-    display: flex;
-    flex-direction: column;
-  }
-  
-  .newsletter-charts-row .chart-card h3 {
-    font-size: var(--font-size-sm);
-    margin: 0 0 6px;
-    color: var(--text-soft);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-  
-  .newsletter-charts-row canvas {
-    flex: 1 1 auto;
-    width: 100% !important;
-    height: 100% !important; /* keeps Week 16 cards from stretching page */
-  }
-  
-  .roster-player {
-    display: grid;
-    grid-template-columns: 40px minmax(0, 1.5fr) 40px 80px;
-    gap: 4px;
-    font-size: 0.9rem;
-    align-items: center;
-  }
-  
-  .player-ktc {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  
-  .player-ktc-rank {
-    display: inline-block;
-    margin-left: 4px;
-    opacity: 0.7;
-  }
-  
-  /* ------------------------------------------------------
-     INSIGHTS
-  ------------------------------------------------------- */
-  
-  .insights-legend {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: var(--font-size-xs);
-    color: var(--text-soft);
-    margin-bottom: 10px;
-  }
-  
-  .insights-legend-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 999px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-cyan));
-    box-shadow: 0 0 10px rgba(34, 197, 94, 0.45);
-  }
-  
-  /* Grid of insight cards */
-  
-  .insights-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-    gap: 14px;
-    margin-top: 4px;
-  }
-  
-  @media (max-width: 1000px) {
-    .insights-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-  
-  .insight-card {
-    background: var(--bg-card-soft);
-    border-radius: 14px;
-    border: 1px solid var(--border-subtle);
-    padding: 10px 12px 12px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
-  }
-  
-  .insight-card-header {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-bottom: 8px;
-  }
-  
-  .insight-card-header h3 {
-    margin: 0;
-    font-size: var(--font-size-sm);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-soft);
-  }
-  
-  .insight-card-wide {
-    grid-column: 1 / -1;
-  }
-  
-  /* Insights table */
-  
-  .insights-table-wrapper {
-    max-height: 260px;
-    overflow-y: auto;
-    margin-top: 4px;
-  
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
-  }
-  
-  .insights-table-wrapper::-webkit-scrollbar {
-    width: 6px;
-  }
-  .insights-table-wrapper::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .insights-table-wrapper::-webkit-scrollbar-thumb {
-    background-color: var(--border-strong);
-    border-radius: 99px;
-  }
-  
-  .insights-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--font-size-xs);
-  }
-  
-  .insights-table th,
-  .insights-table td {
-    padding: 6px 8px;
-    border-bottom: 1px solid rgba(15, 23, 42, 0.85);
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-  }
-  
-  .insights-table th:first-child,
-  .insights-table td:first-child {
-    text-align: left;
-  }
-  
-  .insights-table thead th {
-    background: rgba(15, 23, 42, 0.98);
-    position: sticky;
-    top: 0;
-    z-index: 1;
-  }
-  
-  .insights-table tbody tr:nth-child(odd) {
-    background: rgba(15, 23, 42, 0.9);
-  }
-  
-  .insights-table tbody tr:nth-child(even) {
-    background: rgba(15, 23, 42, 0.8);
-  }
-  
-  .insights-table tbody tr:hover {
-    background: rgba(34, 197, 94, 0.08);
-  }
-  
-  /* ------------------------------------------------------
-     GENERIC CHART CARDS
-  ------------------------------------------------------- */
-  
-  .chart-card {
-    background: var(--bg-card-soft);
-    border-radius: 12px;
-    border: 1px solid var(--border-subtle);
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-  }
-  
-  .chart-card h3 {
-    font-size: var(--font-size-sm);
-    margin: 0 0 6px;
-    color: var(--text-soft);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-  
-  .chart-card canvas {
-    flex: 1 1 auto;
-    width: 100% !important;
-  }
-  
-  /* Let non-newsletter charts control their height via inline style */
   

@@ -400,64 +400,72 @@
      *     captured_at timestamptz default now()
      *   );
      */
-    async function persistSnapshotToSupabase(snapshot, extraMeta) {
-      const client = getSupabaseClient();
-      if (!client) return null;
-  
-      const snap = snapshot || {};
-      const meta = extraMeta || {};
-  
-      try {
-        const leagueInSnap =
-          snap.league && (snap.league.league_id || snap.league.leagueID);
-        const leagueId = leagueInSnap || CONFIG.LEAGUE_ID || null;
-  
-        const seasonRaw =
-          (snap.league && (snap.league.season || snap.league.year)) ||
-          CONFIG.CURRENT_SEASON;
-        const season =
-          typeof seasonRaw === "string"
-            ? parseInt(seasonRaw, 10)
-            : Number(seasonRaw);
-        const week =
-          typeof snap.week === "number" && Number.isFinite(snap.week)
-            ? snap.week
-            : null;
-  
-        const row = Object.assign(
-          {
-            league_id: leagueId ? String(leagueId) : null,
-            season: Number.isFinite(season) ? season : null,
-            week: week,
-            snapshot: snap,
-            captured_at: new Date().toISOString(),
-          },
-          meta
-        );
-  
-        const { data, error } = await client
-          .from(SUPABASE_CONFIG.snapshotTable)
-          .insert(row)
-          .select()
-          .maybeSingle();
-  
-        if (error) {
+     async function persistSnapshotToSupabase(snapshot, extraMeta = {}) {
+        const client = getSupabaseClient();
+        if (!client) {
+          console.warn("[SleeperClient] Supabase client unavailable; skipping snapshot persist.");
+          return null;
+        }
+      
+        // Make 100% sure we have a valid table name
+        const tableName =
+          (SUPABASE_CONFIG && typeof SUPABASE_CONFIG.TABLE_NAME === "string" &&
+            SUPABASE_CONFIG.TABLE_NAME.trim()) ||
+          "sleeper_snapshots";
+      
+        if (!tableName) {
           console.warn(
-            "[SleeperClient] Failed to persist snapshot to Supabase:",
-            error
+            "[SleeperClient] Cannot persist snapshot – TABLE_NAME is empty in SUPABASE_CONFIG."
           );
           return null;
         }
-  
-        return data || null;
-      } catch (err) {
-        console.warn(
-          "[SleeperClient] Unexpected error while persisting snapshot:",
-          err
-        );
-        return null;
+      
+        try {
+          const leagueIdFromSnapshot =
+            (snapshot && snapshot.league && snapshot.league.league_id) ||
+            CONFIG.LEAGUE_ID ||
+            null;
+      
+          const row = Object.assign(
+            {
+              league_id: leagueIdFromSnapshot ? String(leagueIdFromSnapshot) : null,
+              week:
+                snapshot && typeof snapshot.week === "number"
+                  ? snapshot.week
+                  : null,
+              snapshot, // stored as jsonb
+              captured_at: new Date().toISOString(),
+            },
+            extraMeta
+          );
+      
+          const { data, error } = await client
+            .from(tableName)
+            .insert(row)
+            .select()
+            .maybeSingle();
+      
+          if (error) {
+            console.warn(
+              "[SleeperClient] Failed to persist snapshot to Supabase table `" +
+                tableName +
+                "`:",
+              error
+            );
+            return null;
+          }
+      
+          return data || null;
+        } catch (err) {
+          console.warn(
+            "[SleeperClient] Unexpected error persisting snapshot to Supabase:",
+            err
+          );
+          return null;
+        }
       }
-    }
+      
+      
   
     /**
      * Convenience: produce a single-week snapshot and (optionally) write it

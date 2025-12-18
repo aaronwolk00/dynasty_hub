@@ -4,8 +4,18 @@
   <meta charset="UTF-8" />
   <title>Dynasty Playoff Hub</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Free fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap"
+    rel="stylesheet"
+  />
+
   <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
   <div id="app">
     <!-- ==========================================================
@@ -18,9 +28,10 @@
           Loading league info…
         </div>
       </div>
+
       <div class="controls">
         <label>
-          Week:
+          Week
           <select id="week-select"></select>
         </label>
         <button id="refresh-btn" type="button">Refresh</button>
@@ -34,37 +45,117 @@
       <section class="panel">
         <!-- Top-level tabs -->
         <nav class="top-tabs" aria-label="Primary views">
-          <button class="tab-btn active" data-tab="newsletter">Newsletter</button>
-          <button class="tab-btn" data-tab="rosters">Rosters</button>
-          <button class="tab-btn" data-tab="season">Season</button>
-          <button class="tab-btn" data-tab="insights">Insights</button>
-          <button class="tab-btn" data-tab="receipts">Receipts</button>
+          <button id="tab-newsletter-btn" class="tab-btn active" data-tab="newsletter">Newsletter</button>
+          <button id="tab-rosters-btn" class="tab-btn" data-tab="rosters">Rosters</button>
+          <button id="tab-season-btn" class="tab-btn" data-tab="season">Season</button>
+          <button id="tab-insights-btn" class="tab-btn" data-tab="insights">Insights</button>
+          <button id="tab-receipts-btn" class="tab-btn" data-tab="receipts">Receipts</button>
         </nav>
 
         <!-- ======================================================
-             TAB: Newsletter (primary / matchups + recap)
+             TAB: Newsletter (snapshot)
         ======================================================= -->
         <section id="tab-newsletter" class="tab-panel active" aria-labelledby="tab-newsletter-btn">
           <h2>Newsletter</h2>
 
-          <!-- Filled by newsletter.js with matchup cards, bracket, odds, charts -->
-          <div id="newsletter-content" class="newsletter-body">
-            <p>
-              Once league data loads, this view will show the weekly preview or recap,
-              Supabase-driven recap phrases, win odds, title odds, and the playoff picture.
-            </p>
-            <p class="small">
-              All projections run locally in your browser using Sleeper’s public API.
-            </p>
+          <!-- Week Brief (collapsible) -->
+          <section class="week-brief" id="week-brief">
+            <div class="week-brief-head">
+              <div>
+                <div class="week-brief-kicker">Week Brief</div>
+                <div class="week-brief-title" id="week-brief-title">This Week’s Snapshot</div>
+              </div>
+              <button class="week-brief-toggle" type="button" id="toggle-summary">Open Summary</button>
+            </div>
+
+            <div class="week-brief-body" id="week-brief-body">
+              <p id="week-brief-text" class="small" style="margin:0;">
+                Your 3–4 sentence summary will appear here once the snapshot loads.
+              </p>
+            </div>
+          </section>
+
+          <!-- Newsroom layout -->
+          <div class="newsletter-grid">
+            <!-- LEFT: matchup cards + recap content written by newsletter.js -->
+            <section class="newsletter-left">
+              <div class="section-row">
+                <div class="section-kicker">Matchups</div>
+                <div class="section-note">Projected points, win odds, records</div>
+              </div>
+
+              <div id="newsletter-content" class="newsletter-body">
+                <p class="small" style="margin-top:0;">
+                  Once league data loads, this view will show the weekly snapshot: matchups, odds, and recaps.
+                </p>
+                <p class="small">
+                  All projections run locally in your browser using Sleeper’s public API.
+                </p>
+              </div>
+            </section>
+
+            <!-- RIGHT: sticky matchup detail -->
+            <aside class="newsletter-right matchup-detail-sticky" aria-label="Matchup detail panel">
+              <div class="detail-shell">
+                <div class="detail-head">
+                  <div>
+                    <div class="detail-kicker">Matchup Detail</div>
+                    <div class="detail-title" id="matchup-detail-title">Select a matchup</div>
+                  </div>
+
+                  <!-- Starters / All toggle -->
+                  <div class="segmented" id="detail-scope-toggle" role="tablist" aria-label="Detail scope">
+                    <button class="seg-btn active" type="button" id="detail-scope-starters" data-scope="starters" aria-selected="true">
+                      Starters
+                    </button>
+                    <button class="seg-btn" type="button" id="detail-scope-all" data-scope="all" aria-selected="false">
+                      All
+                    </button>
+                  </div>
+                </div>
+
+                <div id="matchup-detail-container" data-detail-scope="starters">
+                  <div class="loading">
+                    Click any matchup card to view player-level details.
+                  </div>
+                </div>
+
+                <div class="small" style="margin-top:8px;">
+                  Tip: click table headers to toggle columns (where supported).
+                </div>
+              </div>
+            </aside>
           </div>
 
-          <!-- Shared Matchup Detail panel lives under Newsletter.
-               newsletter.js writes into #matchup-detail-container when a card is clicked. -->
-          <h2 class="subheading">Matchup Detail</h2>
-          <div id="matchup-detail-container">
-            <div class="loading">
-              Click any matchup card in the newsletter above to view player-level details.
-            </div>
+          <hr class="hr-soft" />
+
+          <!-- League Pulse (replaces the “stupid charts” area) -->
+          <div class="section-row">
+            <div class="section-kicker">League Pulse</div>
+            <div class="section-note">The quick-hit stuff people actually care about</div>
+          </div>
+
+          <div class="pulse-grid">
+            <section class="pulse-card" aria-label="Title odds">
+              <h3>Title Odds</h3>
+              <div id="pulse-title-odds" class="small">
+                (Populate this with a top 6–8 list or progress bars.)
+              </div>
+            </section>
+
+            <section class="pulse-card" aria-label="Weekly alerts">
+              <h3>This Week’s Alerts</h3>
+              <div id="pulse-alerts" class="small">
+                Closest line, biggest blowout risk, upset watch, etc.
+              </div>
+            </section>
+
+            <section class="pulse-card" aria-label="Quick table">
+              <h3>Quick Table</h3>
+              <div id="pulse-quick-table" class="small">
+                A condensed matchup summary table can go here.
+              </div>
+            </section>
           </div>
         </section>
 
@@ -211,7 +302,6 @@
        Sleeper player metadata preload (player_id → name/pos/team)
   =========================================================== -->
   <script>
-    // Expose a global promise so KTCClient can wait on it
     window.__PLAYER_MAP_READY__ = (async function preloadSleeperPlayers() {
       try {
         const res = await fetch("https://api.sleeper.app/v1/players/nfl");
@@ -237,24 +327,14 @@
       }
     })();
   </script>
-  
 
   <!-- ==========================================================
        Supabase + Phrase Engine (for recap lines + KTC)
   =========================================================== -->
-  <!-- UMD Supabase (global window.supabase) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-
-  <!-- League config must be available before supabase.js uses it -->
   <script src="league_config.js"></script>
-
-  <!-- ESM wrapper that exports `supabase` instance for modules -->
   <script type="module" src="supabase.js"></script>
-
-  <!-- PhraseEngine; can use window.supabase if it wants -->
   <script src="phrases.js"></script>
-
-  <!-- KTC client module (imports { supabase } from ./supabase.js and attaches window.KTCClient) -->
   <script type="module" src="ktc_client.js"></script>
 
   <!-- ==========================================================
@@ -266,16 +346,17 @@
   <script src="newsletter.js"></script>
   <script src="charts.js"></script>
   <script src="team_profile.js"></script>
-  <!-- Receipts module (imports { supabase } and attaches window.ReceiptsApp) -->
   <script type="module" src="receipts.js"></script>
   <script src="insights.js"></script>
 
   <!-- ==========================================================
-       Inline bootstrap: tabs + roster view
+       Inline bootstrap: tabs + roster view + new toggles
   =========================================================== -->
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       initTabs();
+      initWeekSummaryToggle();
+      initMatchupDetailScopeToggle();
       initRostersTab();
     });
 
@@ -302,7 +383,60 @@
     }
 
     // ------------------------------------------------------------
-    // Rosters tab: KTC-aware roster view
+    // Week Brief (Open Summary toggle)
+    // ------------------------------------------------------------
+    function initWeekSummaryToggle() {
+      const root = document.getElementById("week-brief");
+      const btn = document.getElementById("toggle-summary");
+      if (!root || !btn) return;
+
+      btn.addEventListener("click", () => {
+        const isOpen = root.classList.toggle("open");
+        btn.textContent = isOpen ? "Close Summary" : "Open Summary";
+      });
+    }
+
+    // ------------------------------------------------------------
+    // Matchup Detail scope toggle (Starters / All)
+    //
+    // This sets:
+    //   window.__MATCHUP_DETAIL_SCOPE__ = "starters" | "all"
+    // And dispatches:
+    //   window event "matchup-detail-scope"
+    // so newsletter.js can re-render detail appropriately.
+    // ------------------------------------------------------------
+    function initMatchupDetailScopeToggle() {
+      const btnStarters = document.getElementById("detail-scope-starters");
+      const btnAll = document.getElementById("detail-scope-all");
+      const container = document.getElementById("matchup-detail-container");
+
+      if (!btnStarters || !btnAll || !container) return;
+
+      function setScope(scope) {
+        const isStarters = scope === "starters";
+        window.__MATCHUP_DETAIL_SCOPE__ = scope;
+        container.setAttribute("data-detail-scope", scope);
+
+        btnStarters.classList.toggle("active", isStarters);
+        btnAll.classList.toggle("active", !isStarters);
+
+        btnStarters.setAttribute("aria-selected", isStarters ? "true" : "false");
+        btnAll.setAttribute("aria-selected", !isStarters ? "true" : "false");
+
+        window.dispatchEvent(
+          new CustomEvent("matchup-detail-scope", { detail: { scope } })
+        );
+      }
+
+      btnStarters.addEventListener("click", () => setScope("starters"));
+      btnAll.addEventListener("click", () => setScope("all"));
+
+      // default
+      setScope("starters");
+    }
+
+    // ------------------------------------------------------------
+    // Rosters tab: KTC-aware roster view (your original, unchanged)
     // ------------------------------------------------------------
     function initRostersTab() {
       const rosterSelect = document.getElementById("roster-select");
@@ -380,9 +514,7 @@
 
             const teamKtcLine =
               teamKtcTotal != null
-                ? `<span class="small">Total KTC: ${teamKtcTotal.toFixed(
-                    0
-                  )}</span>`
+                ? `<span class="small">Total KTC: ${teamKtcTotal.toFixed(0)}</span>`
                 : `<span class="small">Total KTC: <span class="muted">${
                     isKtcAvailable()
                       ? "Calculating / no values"
