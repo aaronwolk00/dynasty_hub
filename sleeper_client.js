@@ -503,40 +503,86 @@
      * If Supabase is configured and autoPersistSnapshots is true, you’ll also get
      * a new row inserted in `sleeper_snapshots` for that week.
      */
-    async function getLeagueSnapshot(week, leagueIdOverride) {
-      const wkNum = Number(week);
-      if (!Number.isFinite(wkNum)) {
-        throw new Error("[SleeperClient] Invalid week for snapshot: " + week);
-      }
-  
-      const bundle = await fetchLeagueBundle({
-        leagueId: leagueIdOverride,
-        weeks: [wkNum],
-      });
-  
-      const snapshot = {
-        league: bundle.league,
-        users: bundle.users,
-        rosters: bundle.rosters,
-        matchups: bundle.matchupsByWeek[wkNum] || [],
-        winnersBracket: bundle.winnersBracket || [],
-        week: wkNum,
-      };
-  
-      window.__LAST_SNAPSHOT__ = snapshot;
-  
-      if (SUPABASE_CONFIG.enabled && SUPABASE_CONFIG.autoPersistSnapshots) {
-        // Fire-and-forget; call persistSnapshotToSupabase directly if you want to await.
-        persistSnapshotToSupabase(snapshot).catch(function (err) {
-          console.warn(
-            "[SleeperClient] Error auto-persisting snapshot to Supabase:",
-            err
-          );
+     async function getLeagueSnapshot(week, leagueIdOverride) {
+        const wkNum = Number(week);
+        if (!Number.isFinite(wkNum)) {
+          throw new Error("[SleeperClient] Invalid week for snapshot: " + week);
+        }
+      
+        const bundle = await fetchLeagueBundle({
+          leagueId: leagueIdOverride,
+          weeks: [wkNum],
         });
+      
+        const snapshot = {
+          league: bundle.league,
+          users: bundle.users,
+          rosters: bundle.rosters,
+          matchups: bundle.matchupsByWeek[wkNum] || [],
+          winnersBracket: bundle.winnersBracket || [],
+          week: wkNum,
+        };
+      
+        // --- NEW: embed dynasty KTC totals per roster into the snapshot ---
+        try {
+          const ktcClient = window.KTCClient || null;
+      
+          if (ktcClient && typeof ktcClient.getBestValueForSleeperId === "function") {
+            const dynastyTotals = {};
+            const perPlayerKtc = {}; // optional: only if you want per-player in SQL later
+      
+            (bundle.rosters || []).forEach((r) => {
+              const rid = String(r.roster_id);
+              const players = Array.isArray(r.players) && r.players.length
+                ? r.players
+                : (r.starters || []);
+      
+              let total = 0;
+              perPlayerKtc[rid] = [];
+      
+              players.forEach((pid) => {
+                const sleeperId = String(pid);
+                const v = ktcClient.getBestValueForSleeperId(sleeperId);
+                if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+                  total += v;
+                }
+                // store per-player detail if you care
+                perPlayerKtc[rid].push({
+                  sleeper_id: sleeperId,
+                  ktc_value: Number.isFinite(v) ? v : null,
+                });
+              });
+      
+              dynastyTotals[rid] = total;
+            });
+      
+            snapshot.dynasty_totals = dynastyTotals;  // { "1": 12345, "2": 9876, ... }
+            snapshot.dynasty_players = perPlayerKtc;  // optional detailed breakdown
+          } else {
+            console.warn(
+              "[SleeperClient] KTCClient not available; snapshot will not include dynasty_totals."
+            );
+          }
+        } catch (err) {
+          console.warn("[SleeperClient] Error computing dynasty_totals for snapshot:", err);
+        }
+        // --- END NEW STUFF ---
+      
+        window.__LAST_SNAPSHOT__ = snapshot;
+      
+        if (SUPABASE_CONFIG.enabled && SUPABASE_CONFIG.autoPersistSnapshots) {
+          persistSnapshotToSupabase(snapshot).catch(function (err) {
+            console.warn(
+              "[SleeperClient] Error auto-persisting snapshot to Supabase:",
+              err
+            );
+          });
+        }
+      
+        return snapshot;
       }
-  
-      return snapshot;
-    }
+      
+      
   
     // ---------------------------------------------------------------------------
     // Small normalization helpers
