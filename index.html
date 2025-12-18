@@ -55,109 +55,84 @@
         <!-- ======================================================
              TAB: Newsletter (snapshot)
         ======================================================= -->
-        <section id="tab-newsletter" class="tab-panel active" aria-labelledby="tab-newsletter-btn">
-          <h2>Newsletter</h2>
-
-          <!-- Week Brief (collapsible) -->
-          <section class="week-brief" id="week-brief">
-            <div class="week-brief-head">
-              <div>
-                <div class="week-brief-kicker">Week Brief</div>
-                <div class="week-brief-title" id="week-brief-title">This Week’s Snapshot</div>
-              </div>
-              <button class="week-brief-toggle" type="button" id="toggle-summary">Open Summary</button>
-            </div>
-
-            <div class="week-brief-body" id="week-brief-body">
-              <p id="week-brief-text" class="small" style="margin:0;">
-                Your 3–4 sentence summary will appear here once the snapshot loads.
-              </p>
-            </div>
-          </section>
-
-          <!-- Newsroom layout -->
-          <div class="newsletter-grid">
-            <!-- LEFT: matchup cards + recap content written by newsletter.js -->
-            <section class="newsletter-left">
-              <div class="section-row">
-                <div class="section-kicker">Matchups</div>
-                <div class="section-note">Projected points, win odds, records</div>
-              </div>
-
-              <div id="newsletter-content" class="newsletter-body">
-                <p class="small" style="margin-top:0;">
-                  Once league data loads, this view will show the weekly snapshot: matchups, odds, and recaps.
-                </p>
-                <p class="small">
-                  All projections run locally in your browser using Sleeper’s public API.
-                </p>
-              </div>
-            </section>
-
-            <!-- RIGHT: sticky matchup detail -->
-            <aside class="newsletter-right matchup-detail-sticky" aria-label="Matchup detail panel">
-              <div class="detail-shell">
-                <div class="detail-head">
+        <section id="tab-newsletter" class="tab-panel active">
+            <h2>Newsletter</h2>
+          
+            <div class="newsletter-shell">
+              <!-- LEFT: snapshot + matchup list + extras -->
+              <div class="newsletter-main">
+                <section class="newsletter-card week-brief-card">
+                  <div class="week-brief-left">
+                    <div class="kicker">Week Brief</div>
+                    <div class="week-brief-title">This Week’s Snapshot</div>
+                    <div id="week-brief-blurb" class="week-brief-blurb small">Loading…</div>
+                  </div>
+          
+                  <button id="open-summary-btn" type="button" class="ghost-btn">
+                    Open Summary
+                  </button>
+                </section>
+          
+                <div class="newsletter-head">
                   <div>
-                    <div class="detail-kicker">Matchup Detail</div>
-                    <div class="detail-title" id="matchup-detail-title">Select a matchup</div>
+                    <div class="kicker">Matchups</div>
+                    <div id="newsletter-week-title" class="newsletter-week-title">—</div>
+                    <div id="newsletter-week-subtitle" class="newsletter-week-subtitle small">—</div>
                   </div>
-
-                  <!-- Starters / All toggle -->
-                  <div class="segmented" id="detail-scope-toggle" role="tablist" aria-label="Detail scope">
-                    <button class="seg-btn active" type="button" id="detail-scope-starters" data-scope="starters" aria-selected="true">
-                      Starters
-                    </button>
-                    <button class="seg-btn" type="button" id="detail-scope-all" data-scope="all" aria-selected="false">
-                      All
-                    </button>
+                  <div class="small newsletter-head-right">Projected points, win odds, records</div>
+                </div>
+          
+                <div id="matchups-container" class="matchups-scroll">
+                  <div class="loading">Loading matchups…</div>
+                </div>
+          
+                <div id="newsletter-extras"></div>
+              </div>
+          
+              <!-- RIGHT: matchup detail rail -->
+              <aside class="newsletter-aside">
+                <section class="newsletter-card detail-card">
+                  <header class="detail-card-header">
+                    <div>
+                      <div class="kicker">Matchup Detail</div>
+                      <div id="detail-title" class="detail-title">Select a matchup</div>
+                    </div>
+          
+                    <div class="segmented" role="tablist" aria-label="Detail filters">
+                      <button id="detail-filter-starters" class="seg-btn active" type="button" data-detail="starters">
+                        Starters
+                      </button>
+                      <button id="detail-filter-all" class="seg-btn" type="button" data-detail="all">
+                        All
+                      </button>
+                    </div>
+                  </header>
+          
+                  <div id="matchup-detail-container">
+                    <div class="loading">Select a matchup from the left.</div>
                   </div>
-                </div>
-
-                <div id="matchup-detail-container" data-detail-scope="starters">
-                  <div class="loading">
-                    Click any matchup card to view player-level details.
+          
+                  <div class="small tip">
+                    Tip: click table headers to toggle columns (where supported).
                   </div>
-                </div>
-
-                <div class="small" style="margin-top:8px;">
-                  Tip: click table headers to toggle columns (where supported).
-                </div>
-              </div>
-            </aside>
-          </div>
-
-          <hr class="hr-soft" />
-
-          <!-- League Pulse (replaces the “stupid charts” area) -->
-          <div class="section-row">
-            <div class="section-kicker">League Pulse</div>
-            <div class="section-note">The quick-hit stuff people actually care about</div>
-          </div>
-
-          <div class="pulse-grid">
-            <section class="pulse-card" aria-label="Title odds">
-              <h3>Title Odds</h3>
-              <div id="pulse-title-odds" class="small">
-                (Populate this with a top 6–8 list or progress bars.)
-              </div>
-            </section>
-
-            <section class="pulse-card" aria-label="Weekly alerts">
-              <h3>This Week’s Alerts</h3>
-              <div id="pulse-alerts" class="small">
-                Closest line, biggest blowout risk, upset watch, etc.
-              </div>
-            </section>
-
-            <section class="pulse-card" aria-label="Quick table">
-              <h3>Quick Table</h3>
-              <div id="pulse-quick-table" class="small">
-                A condensed matchup summary table can go here.
-              </div>
-            </section>
-          </div>
-        </section>
+                </section>
+              </aside>
+            </div>
+          
+            <dialog id="summary-dialog" class="summary-dialog">
+              <form method="dialog" class="summary-dialog-inner">
+                <header class="summary-dialog-header">
+                  <div>
+                    <div class="kicker">Week Summary</div>
+                    <div id="summary-dialog-title" class="summary-title">—</div>
+                  </div>
+                  <button id="summary-dialog-close" class="ghost-btn" value="close">Close</button>
+                </header>
+                <div id="summary-dialog-body" class="summary-dialog-body small"></div>
+              </form>
+            </dialog>
+          </section>
+          
 
         <!-- ======================================================
              TAB: Rosters

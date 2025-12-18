@@ -1093,3 +1093,226 @@
     color: var(--accent);
   }
   
+  /* ======================================================
+   VIEWPORT FIT + NEWSLETTER SPLIT LAYOUT (DROP-IN)
+====================================================== */
+
+html, body { height: 100%; }
+
+body {
+  overflow: hidden; /* stop page-level scrolling */
+}
+
+/* Make app shell consume viewport */
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  margin: 14px auto 14px;
+}
+
+/* Let panel be the scrolling container host */
+.panel {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+/* Each active tab fills the panel */
+.tab-panel.active {
+  height: 100%;
+  min-height: 0;
+}
+
+/* Newsletter: header + split grid fills remaining space */
+#tab-newsletter {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.newsletter-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 12px;
+}
+
+/* LEFT column: internal scrolling only where needed */
+.newsletter-main {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Matchup list scrolls (not the page) */
+.matchups-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+/* RIGHT column: detail rail fills height + scrolls internally */
+.newsletter-aside {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.detail-card {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+#matchup-detail-container {
+  flex: 1 1 auto;
+  max-height: none; /* override old max-height */
+  overflow: auto;
+  padding: 8px 10px;
+}
+
+/* This fixes the “smushed” two-team table in a narrow rail */
+#matchup-detail-container .detail-layout {
+  grid-template-columns: 1fr;
+}
+
+/* Slightly tighter matchup cards to fit more above the fold */
+.matchup-card {
+  padding: 9px 12px 10px;
+  margin-bottom: 8px;
+}
+
+/* Week brief styling */
+.week-brief-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.week-brief-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.week-brief-blurb {
+  margin-top: 4px;
+}
+
+/* Section head */
+.newsletter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.newsletter-head-right {
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+/* Segmented control */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  background: rgba(2, 6, 23, 0.55);
+  gap: 2px;
+}
+
+.seg-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+}
+
+.seg-btn.active {
+  background: rgba(34, 197, 94, 0.18);
+  color: #ecfdf5;
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.45);
+}
+
+/* Simple “ghost” button */
+.ghost-btn {
+  background: transparent;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-main);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.ghost-btn:hover {
+  border-color: rgba(34, 197, 94, 0.7);
+  box-shadow: 0 10px 25px rgba(34, 197, 94, 0.18);
+}
+
+/* Kicker label */
+.kicker {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-soft);
+}
+
+/* Summary dialog */
+.summary-dialog {
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  border-radius: 16px;
+  background: rgba(8, 12, 30, 0.98);
+  color: var(--text-main);
+  padding: 0;
+  width: min(780px, calc(100vw - 32px));
+}
+
+.summary-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.summary-dialog-inner {
+  padding: 14px;
+}
+
+.summary-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.summary-title {
+  font-weight: 600;
+}
+
+/* Mobile: stack the rail below */
+@media (max-width: 1100px) {
+  body { overflow: auto; } /* allow page scroll on small screens */
+  #app { height: auto; }
+  .panel { overflow: visible; }
+
+  .newsletter-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .newsletter-aside {
+    height: 420px;
+  }
+}
