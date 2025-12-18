@@ -12,8 +12,8 @@ from supabase import create_client, Client
 
 # We use a formatted string for the URL to inject the page number dynamically
 # page={page} will be replaced in the loop
-KTC_BASE_URL = "https://keeptradecut.com/dynasty-rankings?page={page}&filters=QB|WR|RB|TE&format=2"
-KTC_FORMAT = "superflex"
+KTC_BASE_URL = "https://keeptradecut.com/dynasty-rankings?page={page}&filters=QB|WR|RB|TE|RDP"
+KTC_FORMAT = "1qb"
 
 # How many pages to scrape? (0-9 covers top 1000 players, which is plenty)
 MAX_PAGES = 10 
@@ -165,4 +165,5 @@ def main():
         exit(1)
 
 if __name__ == "__main__":
+
     main()
