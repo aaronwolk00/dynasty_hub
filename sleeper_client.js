@@ -1,29 +1,27 @@
 // sleeper_client.js
 // -----------------------------------------------------------------------------
-// Thin browser client for the Sleeper Fantasy Football API.
+// Thin browser client for the Sleeper Fantasy Football API + optional Supabase
+// snapshot persistence.
 //
-// Goals:
-//   - Abstract all raw HTTP calls into a single place.
-//   - Provide simple helpers for:
-//       • League metadata
-//       • Users (owners)
-//       • Rosters
-//       • Weekly matchups
-//       • Playoff bracket
-//   - Add light caching + basic error handling.
-//   - Stay framework-free and browser-only (no Node, no bundler).
+// Responsibilities:
+//   • Wrap raw HTTP calls to Sleeper (league, users, rosters, matchups, brackets)
+//   • Provide higher-level helpers (bundles + single-week snapshot)
+//   • Optionally persist snapshots into a Supabase table (e.g. sleeper_snapshots)
+//   • Stay framework-free and browser-only (no bundler, no modules)
 //
-// This file does NOT impose any opinionated shape beyond some light
-// normalization. Higher-level transformation into "TeamWeekView" etc.
-// is done in models.js / newsletter.js.
+// This file does NOT transform the data into “view models”; that’s handled by
+// models.js / newsletter.js / insights.js on top of the snapshots / bundles.
 // -----------------------------------------------------------------------------
 
 (function () {
     "use strict";
   
+    // ---------------------------------------------------------------------------
+    // Sleeper config
+    // ---------------------------------------------------------------------------
+  
     const BASE_URL = "https://api.sleeper.app/v1";
   
-    // Fallback config if league_config.js is missing
     const DEFAULT_LEAGUE_CONFIG = {
       LEAGUE_ID: null,
       CURRENT_SEASON: null,
@@ -32,14 +30,10 @@
       CACHE_TTL_MS: 60 * 1000, // 1 minute default
     };
   
-    const CONFIG = (window.LEAGUE_CONFIG
-      ? Object.assign({}, DEFAULT_LEAGUE_CONFIG, window.LEAGUE_CONFIG)
-      : DEFAULT_LEAGUE_CONFIG
-    );
-  
-    // ---------------
-    // Helpers
-    // ---------------
+    const CONFIG =
+      window.LEAGUE_CONFIG
+        ? Object.assign({}, DEFAULT_LEAGUE_CONFIG, window.LEAGUE_CONFIG)
+        : DEFAULT_LEAGUE_CONFIG;
   
     function assertLeagueId() {
       if (!CONFIG.LEAGUE_ID) {
@@ -49,6 +43,112 @@
       }
       return CONFIG.LEAGUE_ID;
     }
+  
+    // ---------------------------------------------------------------------------
+    // Supabase config (optional)
+    // ---------------------------------------------------------------------------
+    //
+    // Preferred config (under LEAGUE_CONFIG):
+    //
+    //   window.LEAGUE_CONFIG = {
+    //     ...,
+    //     supabase: {
+    //       url: "https://xxx.supabase.co",
+    //       anonKey: "public-anon-key",
+    //
+    //       // Optional overrides:
+    //       snapshotTable: "sleeper_snapshots",
+    //       autoPersistSnapshots: true,  // auto insert on getLeagueSnapshot()
+    //     }
+    //   }
+    //
+    // Legacy fallback (if you already wired this earlier):
+    //
+    //   window.SUPABASE_CONFIG = {
+    //     ENABLED: true,
+    //     SUPABASE_URL: "https://xxx.supabase.co",
+    //     SUPABASE_ANON_KEY: "public-anon-key",
+    //     TABLE_NAME: "sleeper_snapshots",
+    //     AUTO_PERSIST_SNAPSHOTS: true,
+    //   }
+    //
+    // You must also include the Supabase browser client:
+    //   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    // ---------------------------------------------------------------------------
+  
+    const leagueSupabaseCfg =
+      (window.LEAGUE_CONFIG && window.LEAGUE_CONFIG.supabase) || {};
+  
+    const legacySupabaseCfg = window.SUPABASE_CONFIG || {};
+  
+    const SUPABASE_CONFIG = {
+      // Base from LEAGUE_CONFIG.supabase
+      url: leagueSupabaseCfg.url || null,
+      anonKey: leagueSupabaseCfg.anonKey || null,
+      snapshotTable: leagueSupabaseCfg.snapshotTable || "sleeper_snapshots",
+      autoPersistSnapshots: !!leagueSupabaseCfg.autoPersistSnapshots,
+  
+      // Flag – will be recomputed after legacy override
+      enabled: false,
+    };
+  
+    // Legacy overrides (if present)
+    if (typeof legacySupabaseCfg.ENABLED === "boolean") {
+      SUPABASE_CONFIG.enabled = legacySupabaseCfg.ENABLED;
+    }
+    if (legacySupabaseCfg.SUPABASE_URL) {
+      SUPABASE_CONFIG.url = legacySupabaseCfg.SUPABASE_URL;
+    }
+    if (legacySupabaseCfg.SUPABASE_ANON_KEY) {
+      SUPABASE_CONFIG.anonKey = legacySupabaseCfg.SUPABASE_ANON_KEY;
+    }
+    if (legacySupabaseCfg.TABLE_NAME) {
+      SUPABASE_CONFIG.snapshotTable = legacySupabaseCfg.TABLE_NAME;
+    }
+    if (typeof legacySupabaseCfg.AUTO_PERSIST_SNAPSHOTS === "boolean") {
+      SUPABASE_CONFIG.autoPersistSnapshots =
+        legacySupabaseCfg.AUTO_PERSIST_SNAPSHOTS;
+    }
+  
+    // If url + anonKey exist and we didn’t explicitly disable, treat as enabled
+    if (!("ENABLED" in legacySupabaseCfg)) {
+      SUPABASE_CONFIG.enabled = !!(SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey);
+    }
+  
+    let supabaseClient = null;
+  
+    function getSupabaseClient() {
+      if (!SUPABASE_CONFIG.enabled) return null;
+      if (supabaseClient) return supabaseClient;
+  
+      if (!window.supabase || typeof window.supabase.createClient !== "function") {
+        console.warn(
+          "[SleeperClient] Supabase is enabled but window.supabase.createClient is not available. " +
+            "Make sure you added the Supabase UMD script before sleeper_client.js."
+        );
+        return null;
+      }
+  
+      if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey) {
+        console.warn(
+          "[SleeperClient] Supabase config missing url or anonKey. " +
+            "Set LEAGUE_CONFIG.supabase.url and .anonKey (or SUPABASE_CONFIG.SUPABASE_URL / _ANON_KEY)."
+        );
+        return null;
+      }
+  
+      // Single client for this file
+      supabaseClient = window.supabase.createClient(
+        SUPABASE_CONFIG.url,
+        SUPABASE_CONFIG.anonKey
+      );
+  
+      return supabaseClient;
+    }
+  
+    // ---------------------------------------------------------------------------
+    // Local cache helpers (localStorage)
+    // ---------------------------------------------------------------------------
   
     function buildUrl(path) {
       if (!path.startsWith("/")) path = "/" + path;
@@ -63,54 +163,65 @@
           Accept: "application/json",
         },
       });
+  
       if (!res.ok) {
-        const bodyText = await res.text().catch(() => "");
+        const bodyText = await res.text().catch(function () {
+          return "";
+        });
         throw new Error(
-          `[SleeperClient] HTTP ${res.status} for ${url} – ${
-            bodyText || "No body"
-          }`
+          "[SleeperClient] HTTP " +
+            res.status +
+            " for " +
+            url +
+            " – " +
+            (bodyText || "No body")
         );
       }
+  
       return res.json();
     }
   
-    // Basic localStorage cache wrapper
+    function cacheKey() {
+      var parts = ["sleeper_cache", CONFIG.LEAGUE_ID || "no_league"];
+      for (var i = 0; i < arguments.length; i++) {
+        parts.push(String(arguments[i]));
+      }
+      return parts.join("__");
+    }
+  
     function getCache(key) {
       try {
         const raw = window.localStorage.getItem(key);
         if (!raw) return null;
+  
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== "object") return null;
   
         const now = Date.now();
         const ttl = CONFIG.CACHE_TTL_MS || 60_000;
+  
         if (typeof parsed.ts !== "number" || now - parsed.ts > ttl) {
           return null;
         }
+  
         return parsed.data;
-      } catch {
+      } catch (_e) {
         return null;
       }
     }
   
     function setCache(key, data) {
       try {
-        const payload = JSON.stringify({ ts: Date.now(), data });
+        const payload = JSON.stringify({ ts: Date.now(), data: data });
         window.localStorage.setItem(key, payload);
-      } catch {
-        // Ignore cache errors (quota, unsupported, etc.)
+      } catch (_e) {
+        // ignore quota / unsupported errors
       }
     }
   
-    function cacheKey(...parts) {
-      return ["sleeper_cache", CONFIG.LEAGUE_ID || "no_league", ...parts].join(
-        "__"
-      );
-    }
-  
-    // ---------------
-    // Core API calls
-    // ---------------
+    // ---------------------------------------------------------------------------
+    // Core Sleeper calls
+    // ---------------------------------------------------------------------------
   
     async function getLeague(leagueIdOverride) {
       const leagueId = leagueIdOverride || assertLeagueId();
@@ -118,7 +229,7 @@
       const cached = getCache(key);
       if (cached) return cached;
   
-      const data = await fetchJson(`/league/${leagueId}`);
+      const data = await fetchJson("/league/" + leagueId);
       setCache(key, data);
       return data;
     }
@@ -129,7 +240,7 @@
       const cached = getCache(key);
       if (cached) return cached;
   
-      const data = await fetchJson(`/league/${leagueId}/users`);
+      const data = await fetchJson("/league/" + leagueId + "/users");
       setCache(key, data);
       return data;
     }
@@ -140,22 +251,26 @@
       const cached = getCache(key);
       if (cached) return cached;
   
-      const data = await fetchJson(`/league/${leagueId}/rosters`);
+      const data = await fetchJson("/league/" + leagueId + "/rosters");
       setCache(key, data);
       return data;
     }
   
     async function getMatchupsForWeek(week, leagueIdOverride) {
       const leagueId = leagueIdOverride || assertLeagueId();
-      if (!Number.isFinite(Number(week))) {
-        throw new Error(`[SleeperClient] Invalid week: ${week}`);
+      const wkNum = Number(week);
+  
+      if (!Number.isFinite(wkNum)) {
+        throw new Error("[SleeperClient] Invalid week: " + week);
       }
-      const wk = Number(week);
-      const key = cacheKey("matchups", wk);
+  
+      const key = cacheKey("matchups", wkNum);
       const cached = getCache(key);
       if (cached) return cached;
   
-      const data = await fetchJson(`/league/${leagueId}/matchups/${wk}`);
+      const data = await fetchJson(
+        "/league/" + leagueId + "/matchups/" + String(wkNum)
+      );
       setCache(key, data);
       return data;
     }
@@ -166,59 +281,75 @@
       const cached = getCache(key);
       if (cached) return cached;
   
-      const data = await fetchJson(`/league/${leagueId}/winners_bracket`);
+      const data = await fetchJson("/league/" + leagueId + "/winners_bracket");
       setCache(key, data);
       return data;
     }
   
-    // Optional: losers bracket if you care later
     async function getLosersBracket(leagueIdOverride) {
       const leagueId = leagueIdOverride || assertLeagueId();
       const key = cacheKey("losers_bracket");
       const cached = getCache(key);
       if (cached) return cached;
   
-      const data = await fetchJson(`/league/${leagueId}/losers_bracket`);
+      const data = await fetchJson("/league/" + leagueId + "/losers_bracket");
       setCache(key, data);
       return data;
     }
   
-    // ---------------
-    // Higher-level bundle helpers
-    // ---------------
+    // ---------------------------------------------------------------------------
+    // Higher-level bundle + snapshot
+    // ---------------------------------------------------------------------------
   
     /**
-     * Fetch all core league data needed for the newsletter:
-     *
+     * Fetch all core league data needed for your “hub” views:
      *   - league
      *   - users
      *   - rosters
-     *   - matchups for specific weeks
-     *   - winners bracket
+     *   - matchupsByWeek (for the requested weeks)
+     *   - winnersBracket
      *
-     * Returns an object with all the raw pieces, ready to be fed into LeagueModels.
+     * options:
+     *   {
+     *     leagueId?: string,
+     *     weeks?: number[]  // if omitted, uses [SEMIFINAL_WEEK, CHAMPIONSHIP_WEEK].filter(Boolean)
+     *   }
      */
-    async function fetchLeagueBundle(options = {}) {
-      const leagueId = options.leagueId || CONFIG.LEAGUE_ID || assertLeagueId();
+    async function fetchLeagueBundle(options) {
+      const opts = options || {};
+      const leagueId = opts.leagueId || CONFIG.LEAGUE_ID || assertLeagueId();
   
-      const weeks = Array.isArray(options.weeks)
-        ? options.weeks
-        : [CONFIG.SEMIFINAL_WEEK, CONFIG.CHAMPIONSHIP_WEEK].filter(Boolean);
+      const weeksArray = Array.isArray(opts.weeks)
+        ? opts.weeks
+        : [CONFIG.SEMIFINAL_WEEK, CONFIG.CHAMPIONSHIP_WEEK].filter(function (w) {
+            return Number.isFinite(Number(w));
+          });
   
-      const uniqueWeeks = [
-        ...new Set(
-          weeks.filter((w) => Number.isFinite(Number(w)))
-        ),
-      ];
+      const uniqueWeeks = Array.from(
+        new Set(
+          weeksArray
+            .map(function (w) {
+              return Number(w);
+            })
+            .filter(function (w) {
+              return Number.isFinite(w);
+            })
+        )
+      );
   
-      const [league, users, rosters] = await Promise.all([
+      const results = await Promise.all([
         getLeague(leagueId),
         getLeagueUsers(leagueId),
         getLeagueRosters(leagueId),
       ]);
   
+      const league = results[0];
+      const users = results[1];
+      const rosters = results[2];
+  
       const matchupsByWeek = {};
-      for (const wk of uniqueWeeks) {
+      for (let i = 0; i < uniqueWeeks.length; i++) {
+        const wk = uniqueWeeks[i];
         matchupsByWeek[wk] = await getMatchupsForWeek(wk, leagueId);
       }
   
@@ -230,53 +361,166 @@
       }
   
       const bundle = {
-        league,
-        users,
-        rosters,
-        matchupsByWeek,
-        winnersBracket,
+        league: league,
+        users: users,
+        rosters: rosters,
+        matchupsByWeek: matchupsByWeek,
+        winnersBracket: winnersBracket,
       };
   
-      // Expose for debugging / other modules
+      // Expose for other scripts (newsletter.js, insights.js, roster tab, etc.)
       window.__LAST_BUNDLE__ = bundle;
       return bundle;
     }
   
     /**
-     * Convenience: "snapshot" for a single week, same shape you logged earlier:
-     *   { league, users, rosters, matchups, winnersBracket }
+     * Persist a full snapshot into Supabase (if configured).
+     *
+     * Snapshot shape:
+     *   {
+     *     league,
+     *     users,
+     *     rosters,
+     *     matchups,
+     *     winnersBracket,
+     *     week
+     *   }
+     *
+     * extraMeta (optional) is merged into the inserted row, e.g.:
+     *   { source: "playoff_hub", note: "semifinal_week" }
+     *
+     * Expected Supabase schema for the snapshot table (default: sleeper_snapshots):
+     *
+     *   CREATE TABLE public.sleeper_snapshots (
+     *     id          bigserial primary key,
+     *     league_id   text,
+     *     season      integer,
+     *     week        integer,
+     *     snapshot    jsonb not null,
+     *     captured_at timestamptz default now()
+     *   );
+     */
+    async function persistSnapshotToSupabase(snapshot, extraMeta) {
+      const client = getSupabaseClient();
+      if (!client) return null;
+  
+      const snap = snapshot || {};
+      const meta = extraMeta || {};
+  
+      try {
+        const leagueInSnap =
+          snap.league && (snap.league.league_id || snap.league.leagueID);
+        const leagueId = leagueInSnap || CONFIG.LEAGUE_ID || null;
+  
+        const seasonRaw =
+          (snap.league && (snap.league.season || snap.league.year)) ||
+          CONFIG.CURRENT_SEASON;
+        const season =
+          typeof seasonRaw === "string"
+            ? parseInt(seasonRaw, 10)
+            : Number(seasonRaw);
+        const week =
+          typeof snap.week === "number" && Number.isFinite(snap.week)
+            ? snap.week
+            : null;
+  
+        const row = Object.assign(
+          {
+            league_id: leagueId ? String(leagueId) : null,
+            season: Number.isFinite(season) ? season : null,
+            week: week,
+            snapshot: snap,
+            captured_at: new Date().toISOString(),
+          },
+          meta
+        );
+  
+        const { data, error } = await client
+          .from(SUPABASE_CONFIG.snapshotTable)
+          .insert(row)
+          .select()
+          .maybeSingle();
+  
+        if (error) {
+          console.warn(
+            "[SleeperClient] Failed to persist snapshot to Supabase:",
+            error
+          );
+          return null;
+        }
+  
+        return data || null;
+      } catch (err) {
+        console.warn(
+          "[SleeperClient] Unexpected error while persisting snapshot:",
+          err
+        );
+        return null;
+      }
+    }
+  
+    /**
+     * Convenience: produce a single-week snapshot and (optionally) write it
+     * straight into Supabase.
+     *
+     * Returns:
+     *   {
+     *     league,
+     *     users,
+     *     rosters,
+     *     matchups,
+     *     winnersBracket,
+     *     week
+     *   }
+     *
+     * Usage:
+     *   const snapshot = await SleeperClient.getLeagueSnapshot(15);
+     *
+     * If Supabase is configured and autoPersistSnapshots is true, you’ll also get
+     * a new row inserted in `sleeper_snapshots` for that week.
      */
     async function getLeagueSnapshot(week, leagueIdOverride) {
-      const wk = Number(week);
-      if (!Number.isFinite(wk)) {
-        throw new Error(`[SleeperClient] Invalid week for snapshot: ${week}`);
+      const wkNum = Number(week);
+      if (!Number.isFinite(wkNum)) {
+        throw new Error("[SleeperClient] Invalid week for snapshot: " + week);
       }
   
       const bundle = await fetchLeagueBundle({
         leagueId: leagueIdOverride,
-        weeks: [wk],
+        weeks: [wkNum],
       });
   
       const snapshot = {
         league: bundle.league,
         users: bundle.users,
         rosters: bundle.rosters,
-        matchups: bundle.matchupsByWeek[wk] || [],
+        matchups: bundle.matchupsByWeek[wkNum] || [],
         winnersBracket: bundle.winnersBracket || [],
-        week: wk,
+        week: wkNum,
       };
   
       window.__LAST_SNAPSHOT__ = snapshot;
+  
+      if (SUPABASE_CONFIG.enabled && SUPABASE_CONFIG.autoPersistSnapshots) {
+        // Fire-and-forget; call persistSnapshotToSupabase directly if you want to await.
+        persistSnapshotToSupabase(snapshot).catch(function (err) {
+          console.warn(
+            "[SleeperClient] Error auto-persisting snapshot to Supabase:",
+            err
+          );
+        });
+      }
+  
       return snapshot;
     }
   
-    // ---------------
-    // Minimal normalization helpers
-    // ---------------
+    // ---------------------------------------------------------------------------
+    // Small normalization helpers
+    // ---------------------------------------------------------------------------
   
     function buildUserMap(users) {
       const map = {};
-      (users || []).forEach((u) => {
+      (users || []).forEach(function (u) {
         if (!u || !u.user_id) return;
         map[u.user_id] = u;
       });
@@ -286,29 +530,39 @@
     function findOwnerForRoster(roster, users) {
       if (!roster || !Array.isArray(users)) return null;
       const ownerId = roster.owner_id;
-      return users.find((u) => u.user_id === ownerId) || null;
+      return users.find(function (u) {
+        return u && u.user_id === ownerId;
+      }) || null;
     }
   
-    // ---------------
-    // Attach to window
-    // ---------------
+    // ---------------------------------------------------------------------------
+    // Expose public API
+    // ---------------------------------------------------------------------------
   
     window.SleeperClient = {
       // Raw data fetchers
-      getLeague,
-      getLeagueUsers,
-      getLeagueRosters,
-      getMatchupsForWeek,
-      getPlayoffBracket,
-      getLosersBracket,
+      getLeague: getLeague,
+      getLeagueUsers: getLeagueUsers,
+      getLeagueRosters: getLeagueRosters,
+      getMatchupsForWeek: getMatchupsForWeek,
+      getPlayoffBracket: getPlayoffBracket,
+      getLosersBracket: getLosersBracket,
   
-      // Bundled fetch
-      fetchLeagueBundle,
-      getLeagueSnapshot,
+      // Bundled helpers
+      fetchLeagueBundle: fetchLeagueBundle,
+      getLeagueSnapshot: getLeagueSnapshot,
+  
+      // Supabase
+      persistSnapshotToSupabase: persistSnapshotToSupabase,
   
       // Small helpers
-      buildUserMap,
-      findOwnerForRoster,
+      buildUserMap: buildUserMap,
+      findOwnerForRoster: findOwnerForRoster,
+  
+      // Debugging
+      _config: CONFIG,
+      _supabaseConfig: SUPABASE_CONFIG,
+      _getSupabaseClient: getSupabaseClient,
     };
   })();
   
