@@ -86,6 +86,15 @@
           </div>
         </div>
 
+        <button class="tab-btn" data-tab="receipts">Receipts</button>
+
+        <div id="tab-receipts" class="tab-panel">
+            <h2>Receipts</h2>
+            <div id="receipts-summary"></div>
+            <div id="receipts-list"></div>
+        </div>
+
+
         <!-- ======================================================
              TAB: Season Overview
         ======================================================= -->
@@ -242,6 +251,7 @@
   <script src="newsletter.js"></script>
   <script src="charts.js"></script>
   <script src="team_profile.js"></script>
+  <script src="receipts.js"></script>
   <script src="insights.js"></script>
 
   <!-- ==========================================================
@@ -270,196 +280,241 @@
       });
   
       // ----------------------------------------------------
-      // Small helper: wait for a condition with polling
-      // ----------------------------------------------------
-      function waitFor(conditionFn, intervalMs, timeoutMs) {
-        return new Promise((resolve, reject) => {
-          const start = Date.now();
-          const timer = setInterval(() => {
-            try {
-              if (conditionFn()) {
-                clearInterval(timer);
-                resolve(conditionFn());
-                return;
-              }
-            } catch (err) {
-              clearInterval(timer);
-              reject(err);
-              return;
-            }
-            if (Date.now() - start > timeoutMs) {
-              clearInterval(timer);
-              reject(
-                new Error("Timed out waiting for condition: " + conditionFn.toString())
-              );
-            }
-          }, intervalMs);
-        });
-      }
-  
-      // ----------------------------------------------------
-      // Roster view: button grid fed by __LAST_BUNDLE__ + KTC
+      // Rosters tab: KTC-aware roster view
       // ----------------------------------------------------
       const rosterSelect = document.getElementById("roster-select");
       const rosterContainer = document.getElementById("roster-view-container");
   
-      if (rosterSelect && rosterContainer) {
-        const bundlePromise = waitFor(
-          () => window.__LAST_BUNDLE__,
-          300,
-          20000
-        ).catch((err) => {
-          console.warn("[Rosters] Failed waiting for __LAST_BUNDLE__:", err);
-          return null;
+      let currentBundle = null;
+      const selectedIds = new Set();
+      let ktcReady = false;
+  
+      // Safe handle around KTC client
+      function isKtcAvailable() {
+        return (
+          window.KTCClient &&
+          typeof window.KTCClient.getBestValueForSleeperId === "function"
+        );
+      }
+  
+      function getPlayerKtc(playerId) {
+        if (!isKtcAvailable()) return null;
+        const raw = window.KTCClient.getBestValueForSleeperId(String(playerId));
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      }
+  
+      function computeRosterKtc(roster) {
+        if (!roster || !isKtcAvailable()) {
+          return {
+            total: null,
+            perPlayer: {},
+          };
+        }
+  
+        const allPlayers =
+          Array.isArray(roster.players) && roster.players.length
+            ? roster.players
+            : roster.starters || [];
+  
+        const perPlayer = {};
+        let total = 0;
+  
+        allPlayers.forEach((pid) => {
+          const val = getPlayerKtc(pid);
+          if (val != null) {
+            perPlayer[String(pid)] = val;
+            total += val;
+          }
         });
   
-        const ktcPromise =
-          window.KTCClient && typeof window.KTCClient.whenReady === "function"
-            ? window.KTCClient.whenReady().catch((err) => {
-                console.warn("[Rosters] Failed loading KTC values:", err);
-                return null;
-              })
-            : Promise.resolve(null);
+        return { total, perPlayer };
+      }
   
-        Promise.all([bundlePromise, ktcPromise]).then(([bundle]) => {
-          if (!bundle || !bundle.rosters || !bundle.users) {
-            rosterContainer.innerHTML =
-              "<p class='small'>Unable to load rosters from Sleeper.</p>";
-            return;
-          }
+      function renderRosters(
+        ids,
+        rosters,
+        users,
+        sleeperPlayerMap = window.__SLEEPER_PLAYER_MAP__ || {}
+      ) {
+        if (!rosterContainer) return;
   
-          const users = bundle.users || [];
-          const rosters = bundle.rosters || [];
-          const playerMap = window.__SLEEPER_PLAYER_MAP__ || {};
-          const selectedIds = new Set();
+        if (!ids.length) {
+          rosterContainer.innerHTML =
+            '<div class="loading">Select one or more teams above to view their rosters.</div>';
+          return;
+        }
   
-          // Build rosterId → team name for buttons
-          const rosterNameById = {};
-          rosters.forEach((r) => {
-            const user = users.find((u) => u.user_id === r.owner_id);
-            const baseName =
+        const cards = ids
+          .map((id) => {
+            const roster = rosters.find((r) => r.roster_id === id);
+            if (!roster) return "";
+  
+            const user = users.find((u) => u.user_id === roster.owner_id);
+            const name =
               (user && (user.display_name || user.username)) ||
-              ("Team " + r.roster_id);
-            rosterNameById[r.roster_id] = baseName;
-          });
+              (roster.metadata && roster.metadata.team_name) ||
+              `Team ${id}`;
   
-          // Render selector buttons
-          rosterSelect.innerHTML = Object.entries(rosterNameById)
-            .map(
-              ([id, name]) =>
-                `<button type="button" class="roster-select-btn" data-id="${id}">${name}</button>`
-            )
-            .join("");
+            const starters = Array.isArray(roster.starters)
+              ? roster.starters
+              : [];
   
-          rosterSelect.addEventListener("click", (e) => {
-            const btn = e.target.closest(".roster-select-btn");
-            if (!btn) return;
+            // KTC totals for this roster
+            const { total: teamKtcTotal, perPlayer: ktcById } =
+              computeRosterKtc(roster);
   
-            const id = Number(btn.dataset.id);
-            if (!Number.isFinite(id)) return;
+            const teamKtcLine =
+              teamKtcTotal != null
+                ? `<span class="small">Total KTC: ${teamKtcTotal.toFixed(
+                    0
+                  )}</span>`
+                : `<span class="small">Total KTC: <span class="muted">${
+                    isKtcAvailable()
+                      ? "Calculating / no values"
+                      : "Unavailable"
+                  }</span></span>`;
   
-            if (selectedIds.has(id)) {
-              selectedIds.delete(id);
-              btn.classList.remove("selected");
-            } else {
-              selectedIds.add(id);
-              btn.classList.add("selected");
-            }
-  
-            renderRosters(Array.from(selectedIds), rosters, users, playerMap);
-          });
-  
-          // Initial state
-          renderRosters([], rosters, users, playerMap);
-  
-          // ------------------------------------------------
-          // Roster renderer with KTC integration
-          // ------------------------------------------------
-          function renderRosters(ids, rosters, users, playerMap) {
-            if (!ids.length) {
-              rosterContainer.innerHTML =
-                '<div class="loading">Select one or more teams above to view their rosters.</div>';
-              return;
-            }
-  
-            const cards = ids
-              .map((id) => {
-                const roster = rosters.find((r) => r.roster_id === id);
-                if (!roster) return "";
-  
-                const user = users.find((u) => u.user_id === roster.owner_id);
-                const name =
-                  (user && (user.display_name || user.username)) ||
-                  `Team ${id}`;
-  
-                const starters = roster.starters || [];
-  
-                const playerRows = starters
-                  .map((pid) => {
-                    const meta = playerMap[String(pid)] || {};
-                    const fullName = meta.full_name || pid;
-                    const pos = meta.position || "";
-                    const team = meta.team || "";
-  
-                    // KTC lookup by Sleeper id
-                    const ktcRow =
-                      window.KTCClient &&
-                      typeof window.KTCClient.getBySleeperId === "function"
-                        ? window.KTCClient.getBySleeperId(String(pid))
-                        : null;
-  
-                    const ktcValue =
-                      window.KTCClient &&
-                      typeof window.KTCClient.getBestValueForSleeperId === "function"
-                        ? window.KTCClient.getBestValueForSleeperId(String(pid))
-                        : null;
-  
-                    const ktcText =
-                      ktcValue != null
-                        ? ktcValue.toFixed(1)
-                        : "–";
-  
-                    const ktcRank =
-                      ktcRow && typeof ktcRow.rank === "number"
-                        ? "#" + ktcRow.rank
-                        : "";
-  
-                    return `
-                      <div class="roster-player">
-                        <span class="player-pos">${pos}</span>
-                        <span class="player-name">${fullName}</span>
-                        <span class="player-team">${team}</span>
-                        <span class="player-ktc">
-                          ${ktcText}
-                          ${ktcRank ? `<span class="player-ktc-rank small">${ktcRank}</span>` : ""}
-                        </span>
-                      </div>
-                    `;
-                  })
-                  .join("");
+            const playerList = starters
+              .map((pid) => {
+                const meta = sleeperPlayerMap[String(pid)] || {};
+                const fullName = meta.full_name || String(pid);
+                const pos = meta.position || "";
+                const team = meta.team || "";
+                const ktc = ktcById[String(pid)];
   
                 return `
-                  <div class="roster-card">
-                    <div class="roster-header">
-                      <strong>${name}</strong>
-                      <span class="small">Roster ID: ${id}</span>
-                    </div>
-                    ${
-                      playerRows ||
-                      "<p class='small'>No starters listed for this team.</p>"
-                    }
-                  </div>
-                `;
+                  <div class="roster-player">
+                    <span class="player-pos">${pos}</span>
+                    <span class="player-name">${fullName}</span>
+                    <span class="player-team">${team}</span>
+                    <span class="player-ktc">
+                      ${
+                        ktc != null
+                          ? `KTC: ${ktc.toFixed(0)}`
+                          : isKtcAvailable()
+                          ? '<span class="muted">KTC: –</span>'
+                          : ""
+                      }
+                    </span>
+                  </div>`;
               })
               .join("");
   
-            rosterContainer.innerHTML =
-              cards || "<p class='small'>No matching rosters.</p>";
-          }
+            return `
+              <div class="roster-card">
+                <div class="roster-header">
+                  <div>
+                    <strong>${name}</strong>
+                    <span class="small">Roster ID: ${id}</span>
+                  </div>
+                  <div class="roster-ktc-summary">
+                    ${teamKtcLine}
+                  </div>
+                </div>
+                ${
+                  playerList ||
+                  "<p class='small'>No starters listed for this roster.</p>"
+                }
+              </div>`;
+          })
+          .join("");
+  
+        rosterContainer.innerHTML =
+          cards || "<p class='small'>No matching rosters.</p>";
+      }
+  
+      function buildRosterSelector(bundle) {
+        if (!rosterSelect || !bundle) return;
+  
+        const users = bundle.users || [];
+        const rosters = bundle.rosters || [];
+  
+        const rosterNameMap = {};
+        rosters.forEach((r) => {
+          const u = users.find((x) => x.user_id === r.owner_id);
+          const display =
+            (r.metadata && r.metadata.team_name) ||
+            (u && (u.display_name || u.username)) ||
+            `Team ${r.roster_id}`;
+          rosterNameMap[r.roster_id] = display;
         });
+  
+        rosterSelect.innerHTML = Object.entries(rosterNameMap)
+          .map(
+            ([id, name]) =>
+              `<button type="button" class="roster-select-btn" data-id="${id}">${name}</button>`
+          )
+          .join("");
+  
+        rosterSelect.addEventListener("click", (e) => {
+          const btn = e.target.closest(".roster-select-btn");
+          if (!btn) return;
+  
+          const id = Number(btn.dataset.id);
+          if (!Number.isFinite(id)) return;
+  
+          if (selectedIds.has(id)) {
+            selectedIds.delete(id);
+            btn.classList.remove("selected");
+          } else {
+            selectedIds.add(id);
+            btn.classList.add("selected");
+          }
+  
+          if (!currentBundle) return;
+          renderRosters(
+            Array.from(selectedIds),
+            currentBundle.rosters || [],
+            currentBundle.users || []
+          );
+        });
+      }
+  
+      // ----------------------------------------------------
+      // Poll for __LAST_BUNDLE__ (produced by newsletter.js)
+      // ----------------------------------------------------
+      if (rosterSelect && rosterContainer) {
+        const poll = setInterval(() => {
+          const bundle = window.__LAST_BUNDLE__;
+          if (!bundle || !bundle.rosters || !bundle.users) return;
+  
+          clearInterval(poll);
+          currentBundle = bundle;
+          buildRosterSelector(bundle);
+  
+          // Initial state before any selection
+          rosterContainer.innerHTML =
+            '<div class="loading">Select one or more teams above to view their rosters.</div>';
+        }, 400);
+      }
+  
+      // ----------------------------------------------------
+      // Listen for KTC readiness and re-render if needed
+      // ----------------------------------------------------
+      if (
+        window.KTCClient &&
+        typeof window.KTCClient.whenReady === "function"
+      ) {
+        window.KTCClient
+          .whenReady()
+          .then(() => {
+            ktcReady = true;
+            if (currentBundle && selectedIds.size) {
+              renderRosters(
+                Array.from(selectedIds),
+                currentBundle.rosters || [],
+                currentBundle.users || []
+              );
+            }
+          })
+          .catch((err) => {
+            console.warn("[rosters] KTCClient.whenReady() failed:", err);
+          });
       }
     });
   </script>
+  
   
 </body>
 </html>

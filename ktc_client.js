@@ -1,71 +1,153 @@
 // ktc_client.js
 // -----------------------------------------------------------------------------
-// KTCClient – typed, cached interface to KeepTradeCut-style dynasty values.
+// KTCClient – cached interface to KeepTradeCut-style dynasty values.
 //
-// Design goals:
-//   • Pull *all* relevant rows (not just first 100) via Supabase pagination.
-//   • Cache results in memory and expose simple lookups by Sleeper player id.
-//   • Be resilient: if KTC or Supabase are misconfigured, fail gracefully.
-// -----------------------------------------------------------------------------
+// Responsibilities:
+//   • Load ALL KTC rows for this league from Supabase (with pagination).
+//   • Cache by Sleeper player id for fast lookups.
+//   • Expose a small, simple API:
+//
+//       KTCClient.whenReady() -> Promise<cache>
+//       KTCClient.getBySleeperId(id) -> { ...row... } | null
+//       KTCClient.getBestValueForSleeperId(id) -> number | null
+//       KTCClient._debugDump() -> deep copy of cache
+//
+// Configuration (via window.LEAGUE_CONFIG):
+//
+//   LEAGUE_CONFIG.supabase = {
+//     url: "https://...supabase.co",
+//     anonKey: "sb_publishable_...",
+//     ktcTable: "ktc_values",   // optional (fallback to LEAGUE_CONFIG.ktc.table)
+//     ktcPageSize: 300,         // optional
+//     ktcMaxPages: 20,          // optional
+//   }
+//
+//   LEAGUE_CONFIG.ktc = {
+//     table: "ktc_values",
+//     pageSize: 300,
+//     maxPages: 20,
+//   }
+//
+// If no Supabase config is present, KTCClient will be a harmless no-op:
+//   - whenReady() resolves to {}
+//   - all getters return null
+// ----------------------------------------------------------------------------- 
 
 (function () {
     "use strict";
   
-    var globalCfg = (typeof window !== "undefined" && window.LEAGUE_CONFIG) || {};
-    var supaCfg = globalCfg.supabase || {};
-    var ktcCfg = globalCfg.ktc || {};
+    // ---------------------------------------------------------------------------
+    // Local helpers
+    // ---------------------------------------------------------------------------
   
-    var SUPABASE_URL = supaCfg.url || null;
-    var SUPABASE_KEY = supaCfg.anonKey || null;
-    var KTC_TABLE = ktcCfg.table || "ktc_values";
-    var PAGE_SIZE = ktcCfg.pageSize || 200;
-    var MAX_PAGES = ktcCfg.maxPages || 20;
+    function deepClone(obj) {
+      if (obj == null) return obj;
+      try {
+        return JSON.parse(JSON.stringify(obj));
+      } catch (_e) {
+        return obj;
+      }
+    }
   
-    var supaClient = null;
-    var cacheBySleeperId = null;
-    var loadPromise = null;
+    function safeNumber(x, fallback) {
+      if (fallback === void 0) fallback = 0;
+      const n = Number(x);
+      return Number.isFinite(n) ? n : fallback;
+    }
+  
+    // ---------------------------------------------------------------------------
+    // Config extraction
+    // ---------------------------------------------------------------------------
+  
+    const globalCfg =
+      (typeof window !== "undefined" && window.LEAGUE_CONFIG) || {};
+  
+    const supaCfg = globalCfg.supabase || {};
+    const ktcCfg = globalCfg.ktc || {};
+  
+    const SUPABASE_URL = supaCfg.url || null;
+    const SUPABASE_KEY = supaCfg.anonKey || null;
+  
+    const KTC_TABLE =
+      supaCfg.ktcTable || ktcCfg.table || "ktc_values";
+  
+    const PAGE_SIZE =
+      safeNumber(supaCfg.ktcPageSize, null) ||
+      safeNumber(ktcCfg.pageSize, null) ||
+      300; // default
+  
+    const MAX_PAGES =
+      safeNumber(supaCfg.ktcMaxPages, null) ||
+      safeNumber(ktcCfg.maxPages, null) ||
+      20;
+  
+    // ---------------------------------------------------------------------------
+    // Internal state
+    // ---------------------------------------------------------------------------
+  
+    let supaClient = null;
+    let cacheBySleeperId = null; // { sleeperId: { ...normalizedRow } }
+    let loadPromise = null;
+  
+    // ---------------------------------------------------------------------------
+    // Supabase wiring
+    // ---------------------------------------------------------------------------
   
     function ensureSupabaseClient() {
       if (supaClient) return supaClient;
-      if (!window.supabase || !SUPABASE_URL || !SUPABASE_KEY) {
+  
+      if (!window.supabase || typeof window.supabase.createClient !== "function") {
         console.warn(
-          "[KTCClient] Supabase not configured (check LEAGUE_CONFIG.supabase). " +
+          "[KTCClient] Supabase UMD is not available (supabase.createClient). " +
+            "Verify the supabase-js script tag is loaded before ktc_client.js."
+        );
+        return null;
+      }
+  
+      if (!SUPABASE_URL || !SUPABASE_KEY) {
+        console.warn(
+          "[KTCClient] Supabase not configured. Expected LEAGUE_CONFIG.supabase.url and anonKey. " +
             "KTC values will not be available."
         );
         return null;
       }
+  
       supaClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       return supaClient;
     }
   
+    // ---------------------------------------------------------------------------
+    // Fetching with pagination
+    // ---------------------------------------------------------------------------
+  
     async function fetchPage(pageIndex) {
-      var client = ensureSupabaseClient();
-      if (!client) return { rows: [], done: true };
+      const client = ensureSupabaseClient();
+      if (!client) return { rows: [], done: true, totalCount: null };
   
-      var from = pageIndex * PAGE_SIZE;
-      var to = from + PAGE_SIZE - 1;
+      const from = pageIndex * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
   
-      var query = client
+      const query = client
         .from(KTC_TABLE)
         .select("*", { count: "exact", head: false })
         .range(from, to)
         .order("rank", { ascending: true });
   
-      var res = await query;
+      const res = await query;
       if (res.error) {
         console.error("[KTCClient] Supabase error:", res.error);
         throw res.error;
       }
   
-      var rows = res.data || [];
-      var done = rows.length < PAGE_SIZE;
-      return { rows: rows, done: done };
+      const rows = res.data || [];
+      const totalCount = typeof res.count === "number" ? res.count : null;
+      const done = rows.length < PAGE_SIZE;
+  
+      return { rows, done, totalCount };
     }
   
     async function loadAllInternal() {
-      if (cacheBySleeperId) {
-        return cacheBySleeperId;
-      }
+      if (cacheBySleeperId) return cacheBySleeperId;
   
       if (!ensureSupabaseClient()) {
         cacheBySleeperId = {};
@@ -73,64 +155,129 @@
       }
   
       console.log(
-        "[KTCClient] Loading KTC values with pageSize=" +
+        "[KTCClient] Loading KTC values from Supabase table `" +
+          KTC_TABLE +
+          "` (pageSize=" +
           PAGE_SIZE +
           ", maxPages=" +
-          MAX_PAGES
+          MAX_PAGES +
+          ")"
       );
   
-      var page = 0;
-      var allRows = [];
+      let page = 0;
+      let allRows = [];
+      let totalCountSeen = null;
   
       while (page < MAX_PAGES) {
-        var out = await fetchPage(page);
+        const out = await fetchPage(page);
+  
         if (out.rows && out.rows.length) {
           allRows = allRows.concat(out.rows);
+          if (out.totalCount != null && totalCountSeen == null) {
+            totalCountSeen = out.totalCount;
+          }
           console.log(
             "[KTCClient] Page " +
               (page + 1) +
               " fetched " +
               out.rows.length +
-              " rows (total " +
+              " rows (running total " +
               allRows.length +
-              ")."
+              (totalCountSeen != null
+                ? " of ~" + totalCountSeen + ")"
+                : ")")
+          );
+        } else {
+          console.log(
+            "[KTCClient] Page " + (page + 1) + " returned 0 rows."
           );
         }
+  
         if (out.done) break;
         page += 1;
       }
   
-      var bySleeperId = {};
-      allRows.forEach(function (row) {
-        var sid = row.sleeper_id || row.sleeperId || null;
+      if (!allRows.length) {
+        console.warn(
+          "[KTCClient] No rows returned from `" +
+            KTC_TABLE +
+            "`. Check that this table exists and is populated."
+        );
+      }
+  
+      const bySleeperId = {};
+      allRows.forEach((row) => {
+        const sid = row.sleeper_id || row.sleeperId || row.player_id || null;
         if (!sid) return;
-        var key = String(sid);
-        bySleeperId[key] = {
+        const key = String(sid);
+  
+        // If duplicates exist, keep the *best* (highest sf) or latest updated row
+        const existing = bySleeperId[key];
+  
+        const sf =
+          typeof row.sf_value === "number"
+            ? row.sf_value
+            : typeof row.sf === "number"
+            ? row.sf
+            : null;
+  
+        const oneQb =
+          typeof row.one_qb_value === "number"
+            ? row.one_qb_value
+            : typeof row.one_qb === "number"
+            ? row.one_qb
+            : null;
+  
+        const rank =
+          typeof row.rank === "number"
+            ? row.rank
+            : typeof row.overall_rank === "number"
+            ? row.overall_rank
+            : null;
+  
+        const updatedAt = row.updated_at || row.updated || null;
+  
+        const normalized = {
           sleeperId: key,
           playerName: row.player_name || row.name || null,
           position: row.position || null,
           team: row.team || null,
-          sfValue:
-            typeof row.sf_value === "number"
-              ? row.sf_value
-              : typeof row.sf === "number"
-              ? row.sf
-              : null,
-          oneQbValue:
-            typeof row.one_qb_value === "number"
-              ? row.one_qb_value
-              : typeof row.one_qb === "number"
-              ? row.one_qb
-              : null,
-          rank:
-            typeof row.rank === "number"
-              ? row.rank
-              : typeof row.overall_rank === "number"
-              ? row.overall_rank
-              : null,
-          updatedAt: row.updated_at || row.updated || null,
-          raw: row
+          sfValue: typeof sf === "number" ? sf : null,
+          oneQbValue: typeof oneQb === "number" ? oneQb : null,
+          rank: typeof rank === "number" ? rank : null,
+          updatedAt,
+          raw: row,
         };
+  
+        if (!existing) {
+          bySleeperId[key] = normalized;
+          return;
+        }
+  
+        // Prefer higher SF value; break ties by more recent updatedAt.
+        const existingVal =
+          typeof existing.sfValue === "number"
+            ? existing.sfValue
+            : existing.oneQbValue || 0;
+        const newVal =
+          typeof normalized.sfValue === "number"
+            ? normalized.sfValue
+            : normalized.oneQbValue || 0;
+  
+        if (newVal > existingVal + 0.0001) {
+          bySleeperId[key] = normalized;
+          return;
+        }
+  
+        if (
+          newVal === existingVal &&
+          normalized.updatedAt &&
+          (!existing.updatedAt ||
+            new Date(normalized.updatedAt) > new Date(existing.updatedAt))
+        ) {
+          bySleeperId[key] = normalized;
+          return;
+        }
       });
   
       cacheBySleeperId = bySleeperId;
@@ -138,15 +285,19 @@
       console.log(
         "[KTCClient] Loaded " +
           Object.keys(cacheBySleeperId).length +
-          " rows into cache."
+          " unique Sleeper IDs into KTC cache."
       );
   
       return cacheBySleeperId;
     }
   
+    // ---------------------------------------------------------------------------
+    // Public-facing helpers
+    // ---------------------------------------------------------------------------
+  
     function loadAll() {
       if (loadPromise) return loadPromise;
-      loadPromise = loadAllInternal().catch(function (err) {
+      loadPromise = loadAllInternal().catch((err) => {
         console.error("[KTCClient] Failed to load KTC values:", err);
         cacheBySleeperId = {};
         return cacheBySleeperId;
@@ -160,12 +311,12 @@
   
     function getBySleeperId(sleeperId) {
       if (!cacheBySleeperId) return null;
-      var key = String(sleeperId);
+      const key = String(sleeperId);
       return cacheBySleeperId[key] || null;
     }
   
     function getBestValueForSleeperId(sleeperId) {
-      var row = getBySleeperId(sleeperId);
+      const row = getBySleeperId(sleeperId);
       if (!row) return null;
       if (typeof row.sfValue === "number") return row.sfValue;
       if (typeof row.oneQbValue === "number") return row.oneQbValue;
@@ -176,12 +327,16 @@
       return cacheBySleeperId ? deepClone(cacheBySleeperId) : {};
     }
   
+    // ---------------------------------------------------------------------------
+    // Attach to window
+    // ---------------------------------------------------------------------------
+  
     window.KTCClient = {
-      whenReady: whenReady,
-      loadAll: loadAll,
-      getBySleeperId: getBySleeperId,
-      getBestValueForSleeperId: getBestValueForSleeperId,
-      _debugDump: debugDump
+      whenReady,
+      loadAll,
+      getBySleeperId,
+      getBestValueForSleeperId,
+      _debugDump: debugDump,
     };
   })();
   

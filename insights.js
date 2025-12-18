@@ -1,6 +1,6 @@
 // insights.js
 // -----------------------------------------------------------------------------
-// Season Overview + Insights (Schedule Luck, vs Avg, Boom/Bust)
+// Season Overview + Insights + Dynasty vs Contender Heatmap
 // -----------------------------------------------------------------------------
 //
 // Assumes the following globals from newsletter.js / sleeper_client.js:
@@ -10,6 +10,11 @@
 //      rosters: [...],
 //      matchupsByWeek: { "1": [matchup...], "2": [...], ... }
 //   }
+//
+// And:
+//   window.LeagueModels.buildTeams(league, users, rosters)
+//   window.KTCClient (optional, from ktc_client.js)
+//   Chart.js already loaded
 //
 // Matchup shape is the standard Sleeper one:
 //   { roster_id, matchup_id, points, ... }
@@ -25,12 +30,12 @@
 //       - #insights-luck-chart
 //       - #insights-boom-bust-chart
 //       - Adds an #insights-legend paragraph
-//
-// Luck definition (all-play):
-//   For each week, treat scores as if every team played every other team.
-//   All-play win% = (wins + 0.5 * ties) / all comparisons.
-//   Luck (wins) = actual wins − expected wins from all-play (% * games).
-// -----------------------------------------------------------------------------
+//   • Adds a "Dynasty vs Contender" heatmap:
+//       - Uses PF/G as X (win-now strength)
+//       - Uses total KTC per roster as Y (dynasty value)
+//       - Bubble radius scaled by KTC
+//       - Quadrants based on league medians
+// ----------------------------------------------------------------------------- 
 
 (function () {
     "use strict";
@@ -40,6 +45,7 @@
     let lastBundleToken = null;
     let luckChart = null;
     let boomBustChart = null;
+    let dynastyHeatmapChart = null;
   
     // ----------------------------------------
     // Small helpers
@@ -67,14 +73,59 @@
         ? Object.keys(bundle.matchupsByWeek).length
         : 0;
       const rosters = (bundle.rosters || []).length;
-      const season = bundle.league && bundle.league.season
-        ? String(bundle.league.season)
-        : "na";
+      const season =
+        bundle.league && bundle.league.season
+          ? String(bundle.league.season)
+          : "na";
       return `${season}|w${weeks}|r${rosters}`;
     }
   
+    function median(values) {
+      if (!values || !values.length) return 0;
+      const arr = values.slice().sort((a, b) => a - b);
+      const mid = Math.floor(arr.length / 2);
+      if (arr.length % 2) return arr[mid];
+      return 0.5 * (arr[mid - 1] + arr[mid]);
+    }
+  
+    // Dynasty vs Contender buckets
+    function classifyBucket(winNow, dynasty, xMed, yMed) {
+      const hiX = winNow >= xMed;
+      const hiY = dynasty >= yMed;
+  
+      if (hiX && hiY) return "powerhouse";
+      if (hiX && !hiY) return "win-now";
+      if (!hiX && hiY) return "rebuild";
+      return "middling";
+    }
+  
+    const BUCKET_LABELS = {
+      powerhouse: "Powerhouse (Now + Future)",
+      "win-now": "All-In Contender",
+      rebuild: "Rebuild / Future-Focused",
+      middling: "Stuck in the Middle",
+    };
+  
+    const BUCKET_COLORS = {
+      powerhouse: "rgba(34, 197, 94, 0.8)",   // green
+      "win-now": "rgba(59, 130, 246, 0.8)",   // blue
+      rebuild: "rgba(249, 115, 22, 0.85)",    // orange
+      middling: "rgba(148, 163, 184, 0.8)",   // slate
+    };
+  
+    function computeRadius(dynasty, minDyn, maxDyn) {
+      if (!Number.isFinite(dynasty)) return 6;
+      if (!Number.isFinite(minDyn) || !Number.isFinite(maxDyn) || maxDyn <= minDyn) {
+        return 10;
+      }
+      const t = (dynasty - minDyn) / (maxDyn - minDyn);
+      const rMin = 6;
+      const rMax = 20;
+      return rMin + t * (rMax - rMin);
+    }
+  
     // ----------------------------------------
-    // Core aggregation
+    // Core aggregation (season metrics)
     // ----------------------------------------
   
     function computeSeasonMetrics(bundle) {
@@ -86,8 +137,8 @@
       rosters.forEach((r) => {
         const owner = users.find((u) => u.user_id === r.owner_id) || {};
         const display =
+          (r.metadata && r.metadata.team_name) ||
           owner.display_name ||
-          r.metadata?.team_name ||
           r.team_name ||
           `Team ${r.roster_id}`;
         rosterIdToName[Number(r.roster_id)] = display;
@@ -123,7 +174,7 @@
             bustWeeks: 0,
             weeksWithScore: 0,
   
-            // will be filled later
+            // filled later
             ppg: 0,
             actualWinPct: 0,
             allPlayWinPct: 0,
@@ -137,22 +188,23 @@
       }
   
       const allWeeklyScores = [];
+      const playedWeeks = new Set();
   
       // First pass: PF/PA, actual record, all-play, vs-average
       Object.keys(matchupsByWeek).forEach((wkStr) => {
         const weekMatchups = matchupsByWeek[wkStr] || [];
         if (!weekMatchups.length) return;
-      
+  
         const scores = [];
         const byGame = new Map();
-      
+  
         // Collect scores and game groupings
         weekMatchups.forEach((m) => {
           const rosterId = Number(m.roster_id);
           const pts = Number(m.points);
           if (!rosterId || !Number.isFinite(pts)) return;
           scores.push({ rosterId, pts });
-      
+  
           const key =
             m.matchup_id != null
               ? String(m.matchup_id)
@@ -160,26 +212,26 @@
           if (!byGame.has(key)) byGame.set(key, []);
           byGame.get(key).push({ rosterId, pts });
         });
-      
+  
         if (!scores.length) return;
-      
-        // ✨ NEW: Ignore weeks where nobody has actually scored yet
-        // (Sleeper often reports future weeks as 0–0 for everyone).
+  
+        // Ignore future weeks where nobody has actually scored yet
         const anyPointsPlayed = scores.some((s) => s.pts > 0.05);
         if (!anyPointsPlayed) {
-          // Don’t count toward PF/PA, all-play, vsAvg, boom/bust, etc.
           return;
         }
-      
-        // Now that we know this is a real, played week,
-        // include these scores in the global boom/bust stats.
+  
+        // Mark this week as "played" for later boom/bust pass
+        playedWeeks.add(wkStr);
+  
+        // Global distribution for boom/bust
         scores.forEach((s) => {
           allWeeklyScores.push(s.pts);
         });
-      
+  
         const weekAvg =
           scores.reduce((sum, s) => sum + s.pts, 0) / scores.length;
-      
+  
         // --- vs league average ---
         scores.forEach((s) => {
           const t = ensureTeam(s.rosterId);
@@ -187,7 +239,7 @@
           else if (s.pts < weekAvg - EPS) t.vsAvgLosses++;
           else t.vsAvgTies++;
         });
-      
+  
         // --- all-play ---
         for (let i = 0; i < scores.length; i++) {
           const a = scores[i];
@@ -200,7 +252,7 @@
             else tA.allPlayTies++;
           }
         }
-      
+  
         // --- actual record + PF/PA from head-to-head ---
         byGame.forEach((gameArr) => {
           if (gameArr.length < 2) return;
@@ -208,18 +260,18 @@
           const g2 = gameArr[1];
           const t1 = ensureTeam(g1.rosterId);
           const t2 = ensureTeam(g2.rosterId);
-      
+  
           t1.pf += g1.pts;
           t1.pa += g2.pts;
           t2.pf += g2.pts;
           t2.pa += g1.pts;
-      
+  
           t1.diff = t1.pf - t1.pa;
           t2.diff = t2.pf - t2.pa;
-      
+  
           t1.games++;
           t2.games++;
-      
+  
           if (Math.abs(g1.pts - g2.pts) <= EPS) {
             t1.ties++;
             t2.ties++;
@@ -231,14 +283,13 @@
             t1.losses++;
           }
         });
-      
-        // weeksWithScore only counts played weeks now
+  
+        // weeksWithScore only counts weeks that actually produced scores
         scores.forEach((s) => {
           const t = ensureTeam(s.rosterId);
           t.weeksWithScore++;
         });
       });
-      
   
       // Global thresholds for boom/bust (mean ± 1σ over all roster-week scores)
       let globalMean = 0;
@@ -260,6 +311,7 @@
         const lower = globalMean - globalStd;
   
         Object.keys(matchupsByWeek).forEach((wkStr) => {
+          if (!playedWeeks.has(wkStr)) return; // only real weeks
           const weekMatchups = matchupsByWeek[wkStr] || [];
           weekMatchups.forEach((m) => {
             const rosterId = Number(m.roster_id);
@@ -331,7 +383,7 @@
   
       if (!teams.length) {
         tbody.innerHTML =
-          '<tr><td colspan="6" class="small">No season data available yet.</td></tr>';
+          '<tr><td colspan="7" class="small">No season data available yet.</td></tr>';
         if (snapshotBox) {
           snapshotBox.innerHTML =
             '<p class="small">Season metrics will appear once at least one week has scores.</p>';
@@ -358,7 +410,9 @@
   
       if (snapshotBox) {
         const byPF = [...teams].sort((a, b) => b.pf - a.pf);
-        const byDiff = [...teams].sort((a, b) => (b.diff || 0) - (a.diff || 0));
+        const byDiff = [...teams].sort(
+          (a, b) => (b.diff || 0) - (a.diff || 0)
+        );
         const byLuckMost = [...teams].sort(
           (a, b) => (b.luckGames || 0) - (a.luckGames || 0)
         );
@@ -401,7 +455,7 @@
     }
   
     // ----------------------------------------
-    // Insights rendering
+    // Insights rendering (table + luck + boom/bust)
     // ----------------------------------------
   
     function renderInsights(metrics) {
@@ -542,6 +596,311 @@
     }
   
     // ----------------------------------------
+    // Dynasty vs Contender Heatmap
+    // ----------------------------------------
+  
+    // Custom plugin to draw median crosshairs
+    const DynastyMedianLinesPlugin = {
+      id: "dynastyMedianLines",
+      afterDraw(chart) {
+        const med = chart.$dynastyMedians;
+        if (!med) return;
+        const xMed = med.x;
+        const yMed = med.y;
+        if (!Number.isFinite(xMed) || !Number.isFinite(yMed)) return;
+  
+        const xScale = chart.scales.x;
+        const yScale = chart.scales.y;
+        if (!xScale || !yScale) return;
+  
+        const ctx = chart.ctx;
+        const xPix = xScale.getPixelForValue(xMed);
+        const yPix = yScale.getPixelForValue(yMed);
+  
+        ctx.save();
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.7)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+  
+        // Vertical line at x = median win-now
+        ctx.beginPath();
+        ctx.moveTo(xPix, yScale.top);
+        ctx.lineTo(xPix, yScale.bottom);
+        ctx.stroke();
+  
+        // Horizontal line at y = median dynasty
+        ctx.beginPath();
+        ctx.moveTo(xScale.left, yPix);
+        ctx.lineTo(xScale.right, yPix);
+        ctx.stroke();
+  
+        ctx.restore();
+      },
+    };
+  
+    function computeDynastyVsContenderMetrics(bundle, seasonMetrics) {
+      const ktcClient = window.KTCClient || null;
+      if (!seasonMetrics || !seasonMetrics.teamList || !seasonMetrics.teamList.length) {
+        return { points: [], xMedian: 0, yMedian: 0 };
+      }
+  
+      const teams = seasonMetrics.teamList;
+      const rosters = bundle.rosters || [];
+  
+      const rosterMap = {};
+      rosters.forEach((r) => {
+        rosterMap[String(r.roster_id)] = r;
+      });
+  
+      const points = [];
+  
+      teams.forEach((t) => {
+        const ridStr = String(t.rosterId);
+        const roster = rosterMap[ridStr];
+        if (!roster) return;
+  
+        // Win-now strength: PF per game from season metrics
+        const winNow = t.ppg || 0;
+  
+        // Dynasty value: sum KTC across rostered players
+        let dynasty = 0;
+        const players = Array.isArray(roster.players) && roster.players.length
+          ? roster.players
+          : (roster.starters || []);
+  
+        if (ktcClient && typeof ktcClient.getBestValueForSleeperId === "function") {
+          players.forEach((pid) => {
+            const v = ktcClient.getBestValueForSleeperId(String(pid));
+            if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+              dynasty += v;
+            }
+          });
+        }
+  
+        points.push({
+          rosterId: t.rosterId,
+          teamName: t.name,
+          winNow,
+          dynasty,
+        });
+      });
+  
+      if (!points.length) {
+        return { points: [], xMedian: 0, yMedian: 0 };
+      }
+  
+      const xMedianVal = median(
+        points.map((p) => p.winNow).filter(Number.isFinite)
+      );
+      const yMedianVal = median(
+        points.map((p) => p.dynasty).filter(Number.isFinite)
+      );
+  
+      const minDyn = Math.min.apply(
+        null,
+        points.map((p) => p.dynasty)
+      );
+      const maxDyn = Math.max.apply(
+        null,
+        points.map((p) => p.dynasty)
+      );
+  
+      points.forEach((p) => {
+        const bucket = classifyBucket(p.winNow, p.dynasty, xMedianVal, yMedianVal);
+        p.bucket = bucket;
+        p.bucketLabel = BUCKET_LABELS[bucket] || bucket;
+        p.radius = computeRadius(p.dynasty, minDyn, maxDyn);
+        p.color = BUCKET_COLORS[bucket] || BUCKET_COLORS.middling;
+      });
+  
+      return {
+        points,
+        xMedian: xMedianVal,
+        yMedian: yMedianVal,
+      };
+    }
+  
+    function ensureDynastyHeatmapCanvas() {
+      let canvas = document.getElementById("insights-dynasty-heatmap");
+      if (canvas) return canvas;
+  
+      const tab = document.getElementById("tab-insights");
+      if (!tab) return null;
+  
+      const overview = tab.querySelector(".season-overview") || tab;
+  
+      const section = document.createElement("section");
+      section.className = "dynasty-heatmap-section";
+      section.innerHTML = `
+        <h3 class="season-subheading">Dynasty vs Contender</h3>
+        <div class="chart-card" style="height: 260px; margin-bottom: 16px;">
+          <canvas id="insights-dynasty-heatmap"></canvas>
+        </div>
+        <p class="small">
+          X-axis: win-now strength (PF per game). Y-axis: total KTC value of the roster.
+          Bubble size also scales with KTC. Quadrants separate powerhouses, contenders,
+          rebuilders, and teams stuck in the middle.
+        </p>
+      `;
+  
+      overview.appendChild(section);
+      return section.querySelector("canvas");
+    }
+  
+    function renderDynastyHeatmap(dynMetrics) {
+      const pts = dynMetrics.points || [];
+      if (!pts.length) {
+        console.warn("[insights.js] No data for Dynasty vs Contender heatmap.");
+        return;
+      }
+  
+      const canvas = ensureDynastyHeatmapCanvas();
+      if (!canvas || !canvas.getContext) {
+        console.warn(
+          "[insights.js] Could not find or create #insights-dynasty-heatmap canvas."
+        );
+        return;
+      }
+  
+      const ctx = canvas.getContext("2d");
+  
+      if (dynastyHeatmapChart) {
+        dynastyHeatmapChart.destroy();
+        dynastyHeatmapChart = null;
+      }
+  
+      const xVals = pts.map((p) => p.winNow).filter(Number.isFinite);
+      const yVals = pts.map((p) => p.dynasty).filter(Number.isFinite);
+  
+      const xMin = Math.min.apply(null, xVals);
+      const xMax = Math.max.apply(null, xVals);
+      const yMin = Math.min.apply(null, yVals);
+      const yMax = Math.max.apply(null, yVals);
+  
+      const xPad = (xMax - xMin) * 0.1 || 5;
+      const yPad = (yMax - yMin) * 0.1 || 500;
+  
+      const dataPoints = pts.map((p) => ({
+        x: p.winNow,
+        y: p.dynasty,
+        r: p.radius,
+        label: p.teamName,
+        bucket: p.bucket,
+        bucketLabel: p.bucketLabel,
+        backgroundColor: p.color,
+      }));
+  
+      dynastyHeatmapChart = new Chart(ctx, {
+        type: "bubble",
+        data: {
+          datasets: [
+            {
+              label: "Teams",
+              data: dataPoints,
+              backgroundColor: dataPoints.map((d) => d.backgroundColor),
+              borderWidth: 1,
+              borderColor: "rgba(15, 23, 42, 0.9)",
+              hoverBorderWidth: 2,
+            },
+          ],
+        },
+        plugins: [DynastyMedianLinesPlugin],
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          parsing: false,
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: "Win-Now Strength (PF per game)",
+              },
+              min: xMin - xPad,
+              max: xMax + xPad,
+              grid: {
+                color: "rgba(31, 41, 55, 0.4)",
+              },
+              ticks: {
+                precision: 1,
+              },
+            },
+            y: {
+              title: {
+                display: true,
+                text: "Dynasty Value (Total KTC)",
+              },
+              min: yMin - yPad,
+              max: yMax + yPad,
+              grid: {
+                color: "rgba(31, 41, 55, 0.4)",
+              },
+            },
+          },
+          plugins: {
+            legend: {
+              display: false,
+            },
+            title: {
+              display: true,
+              text: "Dynasty vs Contender – Strategy Heatmap",
+            },
+            tooltip: {
+              callbacks: {
+                label(context) {
+                  const d = context.raw || {};
+                  const lines = [];
+                  lines.push(d.label || "Unknown Team");
+                  lines.push("Win-Now (PF/G): " + context.parsed.x.toFixed(1));
+                  lines.push("Dynasty KTC: " + context.parsed.y.toFixed(0));
+                  if (d.bucketLabel) lines.push(d.bucketLabel);
+                  return lines;
+                },
+              },
+            },
+          },
+        },
+      });
+  
+      dynastyHeatmapChart.$dynastyMedians = {
+        x: dynMetrics.xMedian,
+        y: dynMetrics.yMedian,
+      };
+    }
+  
+    function renderDynastyVsContender(bundle, seasonMetrics) {
+      if (!window.Chart) return;
+  
+      const ktcClient = window.KTCClient || null;
+      if (!ktcClient) {
+        console.warn(
+          "[insights.js] KTCClient not available; Dynasty vs Contender heatmap skipped."
+        );
+        return;
+      }
+  
+      const maybeReady =
+        typeof ktcClient.whenReady === "function"
+          ? ktcClient.whenReady()
+          : Promise.resolve();
+  
+      maybeReady
+        .then(() => {
+          const dynMetrics = computeDynastyVsContenderMetrics(
+            bundle,
+            seasonMetrics
+          );
+          if (!dynMetrics.points.length) return;
+          renderDynastyHeatmap(dynMetrics);
+        })
+        .catch((err) => {
+          console.warn(
+            "[insights.js] Error waiting for KTCClient.whenReady():",
+            err
+          );
+        });
+    }
+  
+    // ----------------------------------------
     // Poll for bundle + refresh both tabs
     // ----------------------------------------
   
@@ -557,6 +916,7 @@
         const metrics = computeSeasonMetrics(bundle);
         renderSeasonStandings(metrics);
         renderInsights(metrics);
+        renderDynastyVsContender(bundle, metrics);
       } catch (err) {
         console.warn("[insights.js] refresh error:", err);
       }
@@ -570,11 +930,14 @@
   
     // Expose a tiny API if you ever want to force-refresh manually.
     window.Insights = {
-      refreshFromBundle: function (bundle) {
+      refreshFromBundle(bundle) {
         try {
-          const metrics = computeSeasonMetrics(bundle);
+          const b = bundle || window.__LAST_BUNDLE__;
+          if (!b) return;
+          const metrics = computeSeasonMetrics(b);
           renderSeasonStandings(metrics);
           renderInsights(metrics);
+          renderDynastyVsContender(b, metrics);
         } catch (err) {
           console.warn("[insights.js] manual refresh error:", err);
         }
