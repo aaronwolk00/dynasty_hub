@@ -1,6 +1,6 @@
-/* ------------------------------------------------------
+/* ======================================================
    DESIGN TOKENS
-------------------------------------------------------- */
+====================================================== */
 
 :root {
     /* Core palette */
@@ -37,11 +37,21 @@
     --font-size-sm: 0.82rem;
     --font-size-md: 0.94rem;
     --font-size-lg: 1.05rem;
+  
+    /* Layout helpers */
+    --page-pad: clamp(12px, 1.6vw, 22px);
+    --content-max: 2000px;
+    --gap: 12px;
+  
+    /* Newsletter rail sizing */
+    --rail-min: 480px;
+    --rail-ideal: 34vw;
+    --rail-max: 720px;
   }
   
-  /* ------------------------------------------------------
+  /* ======================================================
      GLOBAL RESET / BASE
-  ------------------------------------------------------- */
+  ====================================================== */
   
   *,
   *::before,
@@ -53,15 +63,17 @@
   
   body {
     margin: 0;
-    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-      "Segoe UI", sans-serif;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    color: var(--text-main);
+    min-height: 100vh;
+  
     background:
       radial-gradient(circle at 80% 0%, rgba(56, 189, 248, 0.14), transparent 55%),
       radial-gradient(circle at 0% 0%, rgba(34, 197, 94, 0.14), transparent 50%),
       linear-gradient(to bottom, var(--bg-gradient-top), var(--bg-gradient-bottom));
-    color: var(--text-main);
-    min-height: 100vh;
-    overflow: auto; /* IMPORTANT: do not lock the whole app */
+  
+    overflow-y: auto;
+    overflow-x: hidden;
   }
   
   a { color: inherit; }
@@ -89,14 +101,14 @@
     }
   }
   
-  /* ------------------------------------------------------
+  /* ======================================================
      APP SHELL
-  ------------------------------------------------------- */
+  ====================================================== */
   
   #app {
-    max-width: 1500px;
-    margin: 16px auto 28px; /* tightened to fit more above the fold */
-    padding: 0 20px;
+    width: min(var(--content-max), calc(100vw - (var(--page-pad) * 2)));
+    margin: 14px auto 26px;
+    padding: 0;
   }
   
   .top-bar {
@@ -104,8 +116,8 @@
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
     gap: 10px;
+    margin-bottom: 12px;
   }
   
   .top-bar-title {
@@ -121,8 +133,7 @@
     margin-top: 2px;
   }
   
-  /* Controls (week + refresh) */
-  
+  /* Controls */
   .controls {
     display: flex;
     align-items: center;
@@ -151,11 +162,7 @@
   .controls button {
     cursor: pointer;
     border-color: rgba(34, 197, 94, 0.75);
-    transition:
-      background 0.15s ease,
-      box-shadow 0.15s ease,
-      transform 0.1s ease,
-      border-color 0.15s ease;
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
   }
   
   .controls button:hover {
@@ -164,9 +171,9 @@
     transform: translateY(-1px);
   }
   
-  /* ------------------------------------------------------
+  /* ======================================================
      MAIN PANEL
-  ------------------------------------------------------- */
+  ====================================================== */
   
   .layout { display: block; }
   
@@ -174,10 +181,10 @@
     background: var(--bg-panel);
     border-radius: var(--radius-card);
     border: 1px solid var(--border-subtle);
-    padding: 14px 14px 16px; /* tightened */
+    padding: 14px;
     box-shadow: var(--shadow-panel);
-    min-height: 260px;
     backdrop-filter: blur(10px);
+    overflow: visible;
     position: relative;
   }
   
@@ -190,39 +197,9 @@
     color: var(--text-soft);
   }
   
-  .subheading { margin-top: 16px; }
-  
-  /* Section header row (newspaper vibe) */
-  .section-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 10px;
-    margin: 10px 0 8px;
-  }
-  
-  .section-kicker {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    color: var(--text-soft);
-  }
-  
-  .section-note {
-    font-size: var(--font-size-xs);
-    color: var(--text-soft);
-  }
-  
-  .hr-soft {
-    height: 1px;
-    border: none;
-    background: rgba(55, 65, 81, 0.6);
-    margin: 10px 0;
-  }
-  
-  /* ------------------------------------------------------
+  /* ======================================================
      TABS
-  ------------------------------------------------------- */
+  ====================================================== */
   
   .top-tabs {
     display: inline-flex;
@@ -232,10 +209,8 @@
     border: 1px solid rgba(55, 65, 81, 0.85);
     margin-bottom: 10px;
     gap: 2px;
-  
-    /* keep clickable + visible if content scrolls underneath */
     position: sticky;
-    top: 0;
+    top: 10px;
     z-index: 50;
   }
   
@@ -248,11 +223,7 @@
     border: none;
     border-radius: var(--radius-pill);
     cursor: pointer;
-    transition:
-      background 0.15s ease,
-      color 0.15s ease,
-      transform 0.1s ease,
-      box-shadow 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   }
   
   .tab-btn:hover { transform: translateY(-1px); }
@@ -266,9 +237,9 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   
-  /* ------------------------------------------------------
-     COMMON UI (kicker / ghost button / segmented)
-  ------------------------------------------------------- */
+  /* ======================================================
+     COMMON UI
+  ====================================================== */
   
   .kicker {
     font-size: 0.7rem;
@@ -284,11 +255,14 @@
     color: var(--text-main);
     padding: 6px 12px;
     cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease, background 0.15s ease;
   }
   
   .ghost-btn:hover {
+    transform: translateY(-1px);
     border-color: rgba(34, 197, 94, 0.7);
     box-shadow: 0 10px 25px rgba(34, 197, 94, 0.18);
+    background: rgba(34, 197, 94, 0.06);
   }
   
   .segmented {
@@ -321,17 +295,16 @@
     box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.45);
   }
   
-  /* ------------------------------------------------------
+  /* ======================================================
      NEWSLETTER: STRUCTURE
-  ------------------------------------------------------- */
+  ====================================================== */
   
   #tab-newsletter h2 { margin-bottom: 8px; }
   
-  /* Shell: left content + right rail */
   .newsletter-shell {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) clamp(320px, 28vw, 420px);
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) clamp(var(--rail-min), var(--rail-ideal), var(--rail-max));
+    gap: var(--gap);
     align-items: start;
   }
   
@@ -339,7 +312,6 @@
     .newsletter-shell { grid-template-columns: 1fr; }
   }
   
-  /* LEFT column */
   .newsletter-main {
     min-width: 0;
     display: flex;
@@ -347,18 +319,11 @@
     gap: 10px;
   }
   
-  /* RIGHT rail */
   .newsletter-aside {
     min-width: 0;
-    position: sticky;
-    top: 12px;
+    position: static;
   }
   
-  @media (max-width: 1100px) {
-    .newsletter-aside { position: static; }
-  }
-  
-  /* Newsletter cards */
   .newsletter-card {
     background: rgba(15, 23, 42, 0.78);
     border-radius: 14px;
@@ -407,28 +372,16 @@
     color: var(--text-soft);
   }
   
-  /* Matchups list should scroll internally instead of forcing the whole page */
   .matchups-scroll {
-    max-height: clamp(340px, calc(100vh - 360px), 720px);
-    overflow: auto;
-    padding-right: 6px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    overflow: visible;
+    max-height: none;
+    padding-right: 0;
   }
   
-  .matchups-scroll::-webkit-scrollbar { width: 6px; }
-  .matchups-scroll::-webkit-scrollbar-track { background: transparent; }
-  .matchups-scroll::-webkit-scrollbar-thumb {
-    background-color: rgba(55, 65, 81, 0.9);
-    border-radius: 99px;
-  }
-  
-  /* Detail card rail: use viewport budget; internal scroll within container */
   .detail-card {
-    max-height: clamp(420px, calc(100vh - 220px), 860px);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    height: auto;
+    overflow: visible;
+    display: block;
   }
   
   .detail-card-header {
@@ -439,180 +392,213 @@
     margin-bottom: 8px;
   }
   
-  /* Tip line */
   .tip { margin-top: 8px; }
   
-  /* Optional: hide old charts row */
-  .newsletter-charts-row { display: none; }
-  
-  /* ------------------------------------------------------
-     MATCHUP LIST (cards)
-  ------------------------------------------------------- */
+  /* ======================================================
+     MATCHUP LIST – CARD DESIGN (v2)
+  ====================================================== */
   
   #matchups-container { margin-top: 6px; }
   
-  .matchup-card {
-    position: relative;
-    background: var(--bg-card);
-    border-radius: var(--radius-card-sm);
-    border: 1px solid var(--border-subtle);
-    padding: 9px 12px 10px; /* tightened */
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition:
-      border-color 0.15s ease,
-      box-shadow 0.15s ease,
-      transform 0.1s ease,
-      background 0.15s ease;
-  }
+  /* kill any old accent bar */
+  .matchup-card::before { display: none !important; }
   
-  .matchup-card::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 8px;
-    bottom: 8px;
-    width: 3px;
-    border-radius: 999px;
-    background: linear-gradient(to bottom, var(--accent), var(--accent-cyan));
-    opacity: 0.7;
+  .matchup-card {
+    background: linear-gradient(160deg, rgba(30, 41, 59, 0.45), rgba(15, 23, 42, 0.92));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
   }
   
   .matchup-card:hover {
-    border-color: rgba(34, 197, 94, 0.6);
-    box-shadow: 0 14px 36px rgba(15, 118, 110, 0.28);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    border-color: rgba(34, 197, 94, 0.55);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
   }
   
   .matchup-card.selected {
-    border-color: rgba(34, 197, 94, 0.85);
-    box-shadow: 0 16px 40px rgba(34, 197, 94, 0.35);
+    border-color: rgba(34, 197, 94, 0.9);
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.7), 0 18px 44px rgba(34, 197, 94, 0.12);
   }
   
-  .matchup-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 4px;
-  }
-  
-  .matchup-teams {
-    font-size: 0.94rem;
-    font-weight: 500;
-  }
-  
-  .matchup-meta {
-    font-size: var(--font-size-xs);
+  /* top row: round + market info */
+  .mu-top {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    padding: 10px 14px 6px;
     color: var(--text-soft);
-  }
-  
-  /* Two-side score row */
-  .matchup-scores-row {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 4px;
-  }
-  
-  .matchup-score-side {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  
-  .matchup-score-line {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-  }
-  
-  .matchup-score-main {
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    font-size: 0.95rem;
-  }
-  
-  .matchup-score-label {
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
+  }
+  .mu-round {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-width:0;
+  }
+  .mu-chip {
+    display:inline-flex;
+    align-items:center;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(34,197,94,0.35);
+    background: rgba(34,197,94,0.12);
+    color:#d1fae5;
+    font-weight:700;
+    letter-spacing: .08em;
+    font-size: 0.68rem;
+  }
+  .mu-meta {
+    display:flex;
+    gap:10px;
+    white-space:nowrap;
+    opacity:0.9;
+  }
+  .mu-meta span{ opacity:0.9; }
+  
+  /* main 3-col layout */
+  .mu-grid {
+    display:grid;
+    grid-template-columns: 1fr 64px 1fr;
+    gap: 10px;
+    align-items:center;
+    padding: 8px 14px 12px;
+  }
+  @media (max-width: 720px){
+    .mu-grid{ grid-template-columns: 1fr; gap:14px; }
+  }
+  
+  /* team sides */
+  .mu-side{ min-width:0; display:flex; flex-direction:column; gap:4px; }
+  .mu-side.left{ align-items:flex-start; text-align:left; }
+  .mu-side.right{ align-items:flex-end; text-align:right; }
+  
+  .mu-id{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    min-width:0;
+  }
+  .mu-side.right .mu-id{ flex-direction: row-reverse; }
+  
+  .mu-avatar{
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(2,6,23,0.6);
+    border: 2px solid rgba(255,255,255,0.10);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.35);
+    flex: 0 0 auto;
+  }
+  .mu-team{
+    min-width:0;
+    font-weight: 750;
+    font-size: 0.98rem;
+    color: #fff;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow:hidden;
+    text-overflow: ellipsis;
+  }
+  .mu-record{
+    margin-top:2px;
+    font-size: 0.72rem;
     color: var(--text-soft);
+    letter-spacing: .02em;
   }
   
-  .matchup-score-side.winner .matchup-score-main {
-    color: var(--accent);
-    text-shadow: 0 0 12px rgba(34, 197, 94, 0.25);
+  .mu-score{
+    font-variant-numeric: tabular-nums;
+    font-size: 2.05rem;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    color:#fff;
   }
-  
-  .matchup-score-side.loser .matchup-score-main { color: var(--text-faint); }
-  
-  .matchup-score-range { color: var(--text-soft); }
-  
-  /* Chips */
-  .tag {
-    display: inline-block;
-    border-radius: var(--radius-pill);
-    padding: 2px 8px;
-    font-size: var(--font-size-xs);
-    border: 1px solid rgba(55, 65, 81, 0.6);
+  .mu-sub{
+    font-size: 0.72rem;
     color: var(--text-soft);
-    margin-left: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    font-weight: 650;
   }
   
-  .tag-favorite {
-    border-color: rgba(34, 197, 94, 0.55);
-    color: var(--accent);
+  /* center column */
+  .mu-center{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    opacity:0.9;
+  }
+  .mu-vs{
+    font-size:0.70rem;
+    font-weight:900;
+    letter-spacing:0.18em;
+    color: rgba(229,231,235,0.75);
+  }
+  .mu-odds{
+    font-variant-numeric: tabular-nums;
+    font-size:0.78rem;
+    color: rgba(229,231,235,0.85);
+    opacity:0.9;
+    white-space:nowrap;
   }
   
-  .tag-underdog {
-    border-color: rgba(249, 115, 115, 0.65);
-    color: var(--danger);
+  /* win bar */
+  .mu-winbar{
+    height: 7px;
+    width: 100%;
+    background: rgba(2,6,23,0.85);
+    display:flex;
   }
+  .mu-winseg{ height:100%; }
+  .mu-winseg.a{ background: var(--accent); }
+  .mu-winseg.b{ background: var(--accent-cyan); }
   
-  /* ------------------------------------------------------
+  /* footer */
+  .mu-footer{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    padding: 8px 14px 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    background: rgba(0,0,0,0.18);
+    color: var(--text-soft);
+    font-size: 0.72rem;
+    flex-wrap:wrap;
+  }
+  .mu-footer strong{ color:#e5e7eb; font-weight:800; }
+  
+  /* ======================================================
      MATCHUP DETAIL (PLAYER STATS)
-  ------------------------------------------------------- */
+  ====================================================== */
   
   #matchup-detail-container {
     margin-top: 6px;
-    overflow: auto;                /* allow both x/y scrolling */
-    overscroll-behavior: contain;  /* nicer rail behavior */
     border-radius: 12px;
     border: 1px solid rgba(31, 41, 55, 0.85);
-    background: radial-gradient(
-      circle at top left,
-      rgba(56, 189, 248, 0.10),
-      rgba(15, 23, 42, 0.92)
-    );
-    padding: 8px 10px;
+    background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.10), rgba(15, 23, 42, 0.92));
+    padding: 10px 12px;
     box-shadow: 0 12px 26px rgba(15, 23, 42, 0.65);
-  
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    max-height: none;
+    overflow: visible;
   }
   
-  #matchup-detail-container::-webkit-scrollbar { width: 6px; height: 6px; }
-  #matchup-detail-container::-webkit-scrollbar-track { background: transparent; }
-  #matchup-detail-container::-webkit-scrollbar-thumb {
-    background-color: rgba(55, 65, 81, 0.9);
-    border-radius: 99px;
-  }
-  
-  /* Layout default: 2 columns (if used outside the rail someday) */
   .detail-layout {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    min-width: 100%;
-  }
-  
-  /* In the narrow right rail, stacking is cleaner than “smushed” */
-  #tab-newsletter .newsletter-aside #matchup-detail-container .detail-layout {
     grid-template-columns: 1fr;
-  }
-  
-  @media (max-width: 900px) {
-    .detail-layout { grid-template-columns: 1fr; }
+    gap: 12px;
+    min-width: 0;
   }
   
   .detail-team { min-width: 0; }
@@ -627,7 +613,7 @@
   }
   
   .detail-team-header .team-name {
-    font-weight: 600;
+    font-weight: 650;
     color: var(--text-main);
   }
   
@@ -637,25 +623,19 @@
     font-size: var(--font-size-xs);
   }
   
-  /* Player tables */
   .detail-table {
+    width: 100%;
     border-collapse: collapse;
     font-size: var(--font-size-xs);
-  
-    /* IMPORTANT: prevents right-side columns being cut off */
-    width: max-content;
-    min-width: 100%;
+    table-layout: fixed;
   }
   
   .detail-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
     background: rgba(15, 23, 42, 0.96);
     border-bottom: 1px solid rgba(148, 163, 184, 0.25);
-    padding: 5px 6px;
+    padding: 6px 6px;
     text-align: left;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text-soft);
     font-variant-numeric: tabular-nums;
   }
@@ -669,95 +649,140 @@
   .detail-table tbody tr:nth-child(even) { background: rgba(15, 23, 42, 0.78); }
   
   .detail-table td {
-    padding: 5px 6px;
+    padding: 6px 6px;
     border-bottom: 1px solid rgba(2, 6, 23, 0.9);
     font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   
-  .detail-table td:first-child {
-    width: 32px;
-    font-weight: 700;
+  .detail-table td:nth-child(n + 3) { text-align: right; }
+  
+  /* Column sizing */
+  #matchup-detail-container .detail-table th:nth-child(1),
+  #matchup-detail-container .detail-table td:nth-child(1){ width: 30px; }
+  
+  #matchup-detail-container .detail-table th:nth-child(2),
+  #matchup-detail-container .detail-table td:nth-child(2){ width: 75px; }
+  
+  #matchup-detail-container .detail-table th:nth-child(3),
+  #matchup-detail-container .detail-table td:nth-child(3){ width: 30px; }
+  
+  #matchup-detail-container .detail-table th:nth-child(4),
+  #matchup-detail-container .detail-table td:nth-child(4){
+    width: 30px;
+    font-style: italic;
+    font-weight: 600;
+    color: #7Fdbff;
+  }
+  
+  #matchup-detail-container .detail-table th:nth-child(5),
+  #matchup-detail-container .detail-table td:nth-child(5){ width: 40px; }
+  
+  #matchup-detail-container .detail-table th:nth-child(6),
+  #matchup-detail-container .detail-table td:nth-child(6){ width: 45px; }
+  
+  #matchup-detail-container .detail-table th:nth-child(7),
+  #matchup-detail-container .detail-table td:nth-child(7){ width: 40px; }
+  
+  /* ======================================================
+     MATCHUP DETAIL – HEADER AVATARS
+  ====================================================== */
+  
+  .detail-title {
+    font-weight: 750;
+    font-size: 0.98rem;
+    color: #fff;
+  }
+  
+  .detail-title-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    min-width:0;
+    flex-wrap:wrap;
+  }
+  
+  .detail-title-team{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-width:0;
+  }
+  
+  .detail-title-avatar{
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    object-fit: cover;
+    background: rgba(2,6,23,0.65);
+    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.35);
+  }
+  
+  .detail-title-name{
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 750;
+  }
+  
+  .detail-title-vs{
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--accent);
-    letter-spacing: 0.04em;
+    color: rgba(229,231,235,0.65);
+    font-weight: 900;
   }
   
-  .detail-table td:nth-child(2) {
-    max-width: 160px;
+  .detail-subline{
+    margin-top: 4px;
+    font-size: 0.72rem;
+    color: var(--text-soft);
+    letter-spacing: 0.02em;
+  }
+  
+  .detail-team-left{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-width:0;
+  }
+  
+  .detail-team-avatar{
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    object-fit: cover;
+    background: rgba(2,6,23,0.65);
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  
+  .detail-team-meta{
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+  
+  .detail-team-meta .team-name{
+    font-weight: 750;
+    color: #fff;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   
-  .detail-table td:nth-child(n + 3) { text-align: right; }
-  
-  /* ------------------------------------------------------
-     ODDS TABLE (for “Championship Picture” extras)
-  ------------------------------------------------------- */
-  
-  .odds-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--font-size-xs);
-    margin-top: 8px;
-  }
-  
-  .odds-table th,
-  .odds-table td {
-    padding: 6px 8px;
-    border-bottom: 1px solid rgba(2, 6, 23, 0.9);
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  
-  .odds-table th:first-child,
-  .odds-table td:first-child { text-align: left; }
-  
-  .odds-table thead th {
-    background: rgba(15, 23, 42, 0.96);
-    position: sticky;
-    top: 0;
-    z-index: 1;
-  }
-  
-  .odds-table tbody tr:nth-child(odd) { background: rgba(15, 23, 42, 0.84); }
-  .odds-table tbody tr:nth-child(even) { background: rgba(15, 23, 42, 0.76); }
-  
-  /* ------------------------------------------------------
-     LEAGUE PULSE (optional)
-  ------------------------------------------------------- */
-  
-  .pulse-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 12px;
-  }
-  
-  @media (max-width: 1100px) {
-    .pulse-grid { grid-template-columns: 1fr; }
-  }
-  
-  .pulse-card {
-    background: rgba(15, 23, 42, 0.78);
-    border-radius: 14px;
-    border: 1px solid rgba(55, 65, 81, 0.6);
-    padding: 10px 12px 12px;
-    box-shadow: var(--shadow-card);
-    min-height: 160px;
-  }
-  
-  .pulse-card h3 {
-    margin: 0 0 8px;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
+  .detail-team-rec{
+    font-size: 0.72rem;
     color: var(--text-soft);
   }
   
-  /* ------------------------------------------------------
-     ROSTER SELECTOR – BUTTON GRID
-  ------------------------------------------------------- */
+  /* ======================================================
+     ROSTERS
+  ====================================================== */
   
   .roster-controls { margin-bottom: 10px; }
   
@@ -771,7 +796,6 @@
     background: rgba(2, 6, 23, 0.55);
     border: 1px solid var(--border-subtle);
     border-radius: 12px;
-  
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;
   }
@@ -792,7 +816,7 @@
     cursor: pointer;
     font-size: 0.86rem;
     text-align: left;
-    transition: all 0.2s ease;
+    transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -810,10 +834,8 @@
     border-color: rgba(34, 197, 94, 0.6);
     color: #f9fafb;
     box-shadow: 0 0 12px rgba(34, 197, 94, 0.22);
-    font-weight: 600;
+    font-weight: 650;
   }
-  
-  /* Roster cards */
   
   #roster-view-container { margin-top: 10px; }
   
@@ -830,6 +852,7 @@
     display: flex;
     justify-content: space-between;
     align-items: baseline;
+    gap: 10px;
     margin-bottom: 8px;
   }
   
@@ -845,7 +868,7 @@
   }
   
   .player-pos {
-    font-weight: 800;
+    font-weight: 850;
     font-size: var(--font-size-xs);
     color: var(--accent);
     text-transform: uppercase;
@@ -874,15 +897,9 @@
     color: rgba(229, 231, 235, 0.95);
   }
   
-  .player-ktc-rank {
-    display: inline-block;
-    margin-left: 4px;
-    opacity: 0.7;
-  }
-  
-  /* ------------------------------------------------------
+  /* ======================================================
      SEASON OVERVIEW / INSIGHTS
-  ------------------------------------------------------- */
+  ====================================================== */
   
   .season-overview {
     display: grid;
@@ -915,7 +932,7 @@
     width: 100%;
     border-collapse: collapse;
     font-size: var(--font-size-xs);
-    min-width: 520px; /* avoids cramped columns */
+    min-width: 520px;
   }
   
   .season-standings-table th,
@@ -969,22 +986,14 @@
     box-shadow: var(--shadow-soft);
   }
   
-  .chart-card h3 {
-    font-size: var(--font-size-sm);
-    margin: 0 0 6px;
-    color: var(--text-soft);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-  
   .chart-card canvas {
     flex: 1 1 auto;
     width: 100% !important;
   }
   
-  /* ------------------------------------------------------
+  /* ======================================================
      SUMMARY DIALOG
-  ------------------------------------------------------- */
+  ====================================================== */
   
   .summary-dialog {
     border: 1px solid rgba(55, 65, 81, 0.9);
@@ -1009,11 +1018,550 @@
   
   .summary-title { font-weight: 600; }
   
-  /* Mobile adjustments */
-  @media (max-width: 1100px) {
-    #app { margin: 14px auto 22px; }
-    .newsletter-aside { position: static; }
-    .detail-card { max-height: none; }
-    .matchups-scroll { max-height: none; }
+  /* ======================================================
+     RECEIPTS – TRADES & FREE AGENCY
+  ====================================================== */
+  
+  /* Header text & summary blurb */
+  #tab-receipts h2 { margin-bottom: 8px; }
+  
+  #receipts-summary .receipts-summary-block {
+    margin-bottom: 22px;
+    font-size: var(--font-size-sm);
+    color: var(--text-soft);
   }
+  
+  #receipts-summary .receipts-summary-block p {
+    margin: 4px 0;
+  }
+  
+  #receipts-summary .receipts-summary-block strong {
+    color: var(--text-main);
+  }
+  
+  /* Two-column layout: Trades (primary), Free Agency / Waivers (secondary) */
+  .receipts-columns {
+    display: grid;
+    gap: 24px;
+  }
+  
+  @media (min-width: 1024px) {
+    .receipts-columns {
+      grid-template-columns: 2fr 1.4fr;
+    }
+  }
+  
+  .receipts-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .receipts-section--trades { }
+  .receipts-section--waivers { }
+
+  .receipt-body--two-col {
+    display: grid;
+    gap: 10px;
+  }
+  
+  @media (min-width: 720px) {
+    .receipt-body--two-col {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  
+  .receipt-assets {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  
+  .receipt-asset {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.3fr);
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid rgba(31, 41, 55, 0.8);
+  }
+  
+  .receipt-asset-main {
+    min-width: 0;
+  }
+  
+  .receipt-asset-name {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .receipt-asset-sub {
+    color: var(--text-soft);
+  }
+  
+  .receipt-asset-meta {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .receipt-asset-ktc {
+    font-size: var(--font-size-sm);
+  }
+  
+  .receipt-asset-stat {
+    color: var(--text-soft);
+  }
+  
+  .receipt-gaveup {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(31, 41, 55, 0.9);
+    color: var(--text-soft);
+  }
+  
+  
+  .receipts-section h3.season-subheading {
+    margin-bottom: 2px;
+  }
+  
+  /* Section bodies */
+  .receipts-section-body {
+    border-radius: 14px;
+    border: 1px solid var(--border-subtle);
+    background: rgba(15, 23, 42, 0.9);
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+  }
+  
+  .receipts-section-body--trades {
+    background: radial-gradient(circle at top left,
+      rgba(34, 197, 94, 0.20),
+      rgba(11, 16, 36, 0.98));
+  }
+  
+  /* Row buttons */
+  .receipts-row {
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 11px 13px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: left;
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    color: var(--text-main);
+  }
+  
+  .receipts-row + .receipts-row {
+    border-top: 1px solid rgba(15, 23, 42, 0.98);
+  }
+  
+  .receipts-row:hover {
+    background: rgba(31, 41, 55, 0.9);
+  }
+  
+  .receipts-row:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
+  
+  .receipts-row-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  
+  .receipts-row-title {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .receipts-row-meta {
+    font-size: var(--font-size-xs);
+    color: var(--text-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .receipts-row-badge {
+    flex-shrink: 0;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    font-size: var(--font-size-xs);
+  }
+  
+  .receipts-row-label {
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: rgba(15, 23, 42, 0.96);
+    color: var(--text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.7rem;
+  }
+  
+  .receipts-row-stat {
+    font-variant-numeric: tabular-nums;
+  }
+  
+  /* Let trade rows show "Net KTC" hint */
+  .receipts-row--trade .receipts-row-badge::before {
+    content: "Net KTC";
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.68rem;
+    color: var(--text-soft);
+  }
+  
+  /* Dialog styling (re-uses summary-dialog base) */
+  .receipts-dialog::backdrop {
+    background: radial-gradient(circle at top,
+      rgba(15, 23, 42, 0.6),
+      rgba(15, 23, 42, 0.96));
+  }
+  
+  .receipts-dialog-inner {
+    max-width: 680px;
+    width: 100%;
+    border-radius: 18px;
+    border: 1px solid var(--border-strong);
+    background: linear-gradient(
+      135deg,
+      rgba(15, 23, 42, 0.98),
+      rgba(8, 12, 30, 0.98)
+    );
+    padding: 14px 16px 16px;
+  }
+  
+  .receipts-dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  
+  .receipts-dialog-header .kicker {
+    font-size: 0.72rem;
+  }
+  
+  #receipts-detail-title {
+    font-size: var(--font-size-md);
+    font-weight: 600;
+  }
+  
+  /* Detail card inside dialog */
+  .receipt-card--detail {
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    background: radial-gradient(circle at top left,
+      rgba(34, 197, 94, 0.10),
+      rgba(11, 16, 36, 1));
+    padding: 12px 14px;
+    font-size: var(--font-size-sm);
+  }
+  
+  .receipt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+  
+  .receipt-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+  
+  .receipt-tag.trade {
+    background: rgba(34, 197, 94, 0.12);
+    color: #bbf7d0;
+    border: 1px solid rgba(34, 197, 94, 0.6);
+  }
+  
+  .receipt-tag.waiver {
+    background: rgba(59, 130, 246, 0.12);
+    color: #bfdbfe;
+    border: 1px solid rgba(59, 130, 246, 0.6);
+  }
+  
+  .receipt-meta {
+    color: var(--text-soft);
+    font-size: var(--font-size-xs);
+  }
+  
+  .receipt-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  /* Trade sides in detail card */
+  .receipt-side {
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(8, 12, 30, 0.95);
+    border: 1px solid rgba(31, 41, 55, 0.9);
+  }
+  
+  .receipt-side + .receipt-side { margin-top: 6px; }
+  
+  .receipt-side-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+  }
+  
+  .receipt-team {
+    font-weight: 500;
+  }
+  
+  .receipt-net {
+    font-size: var(--font-size-xs);
+    color: var(--text-soft);
+  }
+  
+  .receipt-row.small {
+    display: flex;
+    gap: 4px;
+    font-size: var(--font-size-xs);
+    margin: 2px 0;
+  }
+  
+  .receipt-row.small .label {
+    min-width: 60px;
+    color: var(--text-soft);
+  }
+  
+  /* ======================================================
+     MOBILE ADJUSTMENTS
+  ====================================================== */
+  
+  @media (max-width: 1100px) {
+    #app {
+      width: calc(100vw - 24px);
+      margin: 12px auto 20px;
+    }
+  
+    .panel { padding: 12px; }
+  
+    .top-tabs {
+      top: 8px;
+    }
+  }
+
+  /* Bracket */
+.bracket-grid{
+    display:grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap:12px;
+  }
+  @media (max-width: 1100px){
+    .bracket-grid{ grid-template-columns: 1fr; }
+  }
+  .bracket-round-column{
+    border: 1px solid rgba(55,65,81,0.55);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(2,6,23,0.35);
+  }
+  .bracket-round-title{
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--text-main);
+  }
+  .bracket-matchup{
+    border: 1px solid rgba(55,65,81,0.35);
+    border-radius: 12px;
+    padding: 8px;
+    background: rgba(15,23,42,0.65);
+    margin-bottom: 8px;
+  }
+  .bracket-matchup-header{
+    display:flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    color: var(--text-soft);
+    font-size: 0.75rem;
+  }
+  .bracket-team-slot{
+    display:flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .bracket-team-row{
+    display:flex;
+    align-items:center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .bracket-team-name{
+    font-weight: 650;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bracket-team-name.winner{ color: var(--accent); }
+  .bracket-team-name.loser{ color: var(--text-faint); }
+  .bracket-team-name.bye{ color: var(--text-soft); }
+  .bracket-team-meta{
+    color: var(--text-soft);
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  .bracket-grid{
+    display:grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap:12px;
+  }
+  @media (max-width: 1100px){
+    .bracket-grid{ grid-template-columns: 1fr; }
+  }
+  .bracket-round-column{
+    border: 1px solid rgba(55,65,81,0.55);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(2,6,23,0.35);
+  }
+  .bracket-round-title{
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .bracket-matchup{
+    border: 1px solid rgba(55,65,81,0.35);
+    border-radius: 12px;
+    padding: 8px;
+    background: rgba(15,23,42,0.65);
+    margin-bottom: 8px;
+  }
+  .bracket-matchup-header{
+    display:flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    opacity: 0.85;
+    font-size: 0.75rem;
+  }
+  .bracket-team-slot{
+    padding: 6px 0;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .bracket-team-row{
+    display:flex;
+    align-items:center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .bracket-team-name{
+    font-weight: 650;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bracket-team-name.bye{ opacity: 0.75; }
+  .team-avatar{
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+  }
+
+  .bracket-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    gap: 32px;
+    overflow-x: auto;
+    padding: 16px 0;
+  }
+  
+  .bracket-round {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    min-width: 220px;
+    position: relative;
+  }
+  
+  .bracket-round::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -16px;
+    width: 2px;
+    background: rgba(255,255,255,0.06);
+  }
+  
+  .bracket-round:last-child::after {
+    display: none;
+  }
+  
+  .match-box {
+    background: rgba(15,23,42,0.8);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 10px 12px;
+    min-width: 200px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    position: relative;
+  }
+  
+  .match-box .team {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-weight: 600;
+    color: #e5e7eb;
+  }
+  
+  .match-box .team img {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+  }
+  
+  .match-box .meta {
+    font-size: 0.75rem;
+    color: var(--text-soft);
+    margin-top: 4px;
+  }
+  
+  .bracket-round h4 {
+    margin-bottom: 6px;
+    color: var(--text-soft);
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  
+  
+  
   

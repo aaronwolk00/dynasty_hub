@@ -18,24 +18,21 @@
 //   - KTC client:
 //       window.KTCClient.getBestValueForSleeperId(playerId)
 //
-// Renders into (to be wired in index.html later):
-//   <div id="tab-receipts" class="tab-panel">
+// Renders into index.html:
+//
+//   <section id="tab-receipts" class="tab-panel" ...>
 //     <h2>Receipts</h2>
 //     <div id="receipts-summary"></div>
 //     <div id="receipts-list"></div>
-//   </div>
+//   </section>
 //
 // Design goals:
-//   - Show who got fleeced in trades (KTC delta by side, using current values).
-//   - Show waiver efficiency: FAAB spent vs points scored since acquisition.
+//   - Clean split between Trades and Free Agency / Waivers.
+//   - Compact list rows; clicking a row opens a modal with full detail.
+//   - Detail card shows what each team RECEIVED, with per-player KTC and
+//     fantasy stats since the trade (points + positional rank).
+//   - Draft picks show up as first-class assets and (optionally) carry KTC.
 //   - Robust to missing KTC / Supabase / bundle.
-//   - No external dependencies beyond supabase-js and existing globals.
-//
-// This version assumes a module-level Supabase client:
-//
-//   // supabase.js
-//   import { createClient } from "@supabase/supabase-js";
-//   export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // -----------------------------------------------------------------------------
 
 import { supabase } from "./supabase.js";
@@ -49,31 +46,25 @@ import { supabase } from "./supabase.js";
 
   const EPS = 1e-6;
 
-  function safeNumber(x, fallback) {
-    if (fallback === void 0) fallback = 0;
+  function safeNumber(x, fallback = 0) {
     const n = Number(x);
     return Number.isFinite(n) ? n : fallback;
   }
 
-  function formatNumber(n, digits) {
+  function formatFixed(n, digits = 1) {
     const x = safeNumber(n);
-    return x.toFixed(digits != null ? digits : 1);
+    return x.toFixed(digits);
   }
 
-  function formatPercent(n, digits) {
-    const x = safeNumber(n);
-    return (x * 100).toFixed(digits != null ? digits : 1) + "%";
-  }
-
-  function shortName(name, maxLen) {
-    if (!name) return "";
-    if (name.length <= maxLen) return name;
-    return name.slice(0, maxLen - 1) + "…";
+  function formatSignedInt(n) {
+    const x = Math.round(safeNumber(n));
+    if (!Number.isFinite(x)) return "0";
+    const body = Math.abs(x).toLocaleString();
+    return (x >= 0 ? "+" : "–") + body;
   }
 
   function formatDateISO(ts) {
     if (!ts) return "";
-    // Accept Date, timestamp, or ISO-ish strings.
     try {
       const d =
         ts instanceof Date
@@ -93,40 +84,67 @@ import { supabase } from "./supabase.js";
     }
   }
 
-  function groupBy(arr, keyFn) {
-    const map = new Map();
-    (arr || []).forEach((item) => {
-      const key = keyFn(item);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(item);
-    });
-    return map;
+  function shortName(name, maxLen) {
+    if (!name) return "";
+    if (name.length <= maxLen) return name;
+    return name.slice(0, maxLen - 1) + "…";
   }
 
+  function ordinal(nRaw) {
+    const n = safeNumber(nRaw, 0);
+    const v = n % 100;
+    if (v >= 11 && v <= 13) return `${n}th`;
+    switch (n % 10) {
+      case 1:
+        return `${n}st`;
+      case 2:
+        return `${n}nd`;
+      case 3:
+        return `${n}rd`;
+      default:
+        return `${n}th`;
+    }
+  }
+
+    // ---------------------------------------------------------------------------
+  // Draft pick round → KTC value (very simple model)
   // ---------------------------------------------------------------------------
-  // Global-ish config & state
+
+  const PICK_ROUND_KTC = {
+    1: 5000,
+    2: 2700,
+    3: 1250,
+    4: 700,
+    5: 500,
+  };
+
+
+  // ---------------------------------------------------------------------------
+  // Environment wiring: config, Supabase, league id
   // ---------------------------------------------------------------------------
 
   const globalCfg =
     (typeof window !== "undefined" && window.LEAGUE_CONFIG) || {};
   const supaCfg = globalCfg.supabase || {};
 
-  // Supabase presence check (from supabase.js import)
   const HAS_SUPABASE =
     typeof supabase === "object" &&
     supabase !== null &&
     typeof supabase.from === "function";
 
-  // Transactions table name (can be overridden in LEAGUE_CONFIG.supabase)
   const TRANSACTIONS_TABLE = supaCfg.transactionsTable || "transactions";
 
   let lastBundleToken = null;
   let cachedTransactions = null;
   let isLoadingTransactions = false;
 
-  // ---------------------------------------------------------------------------
-  // Environment wiring: leagueId + KTC + bundle
-  // ---------------------------------------------------------------------------
+  // For modal lookups
+  const receiptsIndexById = new Map();
+
+  // Detail dialog elements
+  let detailDialog = null;
+  let detailDialogTitle = null;
+  let detailDialogBody = null;
 
   function getLeagueId() {
     const cfg = globalCfg || {};
@@ -139,6 +157,50 @@ import { supabase } from "./supabase.js";
       null
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Sleeper player meta helpers (names / positions / teams)
+  // ---------------------------------------------------------------------------
+
+  function getSleeperPlayerMeta(playerId) {
+    const id = String(playerId);
+    const map =
+      (typeof window !== "undefined" && window.__SLEEPER_PLAYER_MAP__) || {};
+    return map[id] || {};
+  }
+
+  function getPlayerName(playerId) {
+    const meta = getSleeperPlayerMeta(playerId);
+    const name =
+      meta.full_name ||
+      ((meta.first_name || "") + " " + (meta.last_name || "")).trim();
+    return name || String(playerId);
+  }
+
+  function getPlayerPos(playerId) {
+    const meta = getSleeperPlayerMeta(playerId);
+    return meta.position || "";
+  }
+
+  function getPlayerTeamAbbr(playerId) {
+    const meta = getSleeperPlayerMeta(playerId);
+    return meta.team || meta.team_abbr || meta.team_id || "";
+  }
+
+  function getPlayerLabel(playerId) {
+    const name = getPlayerName(playerId);
+    const pos = getPlayerPos(playerId);
+    return pos ? `${pos} ${name}` : name;
+  }
+
+  function formatPlayerList(ids) {
+    if (!ids || !ids.length) return "None";
+    return ids.map((pid) => getPlayerLabel(pid)).join(", ");
+  }
+
+  // ---------------------------------------------------------------------------
+  // KTC helpers (players + draft picks)
+  // ---------------------------------------------------------------------------
 
   function isKtcAvailable() {
     return (
@@ -155,7 +217,37 @@ import { supabase } from "./supabase.js";
     return Number.isFinite(n) && n > 0 ? n : null;
   }
 
-  // Bundle token so we only recompute when it changes meaningfully.
+  function getDraftPickKtc(pick) {
+    if (!pick) return null;
+    const round =
+      safeNumber(pick.round ?? pick.draft_round ?? pick.draft_round_start, NaN);
+    if (!Number.isFinite(round)) return null;
+
+    const ktc = PICK_ROUND_KTC[round];
+    return typeof ktc === "number" ? ktc : null;
+  }
+
+
+  function describeDraftPick(pick, teamNameIndex) {
+    const season = pick.season || pick.draft_season || "????";
+    const round = ordinal(pick.round || pick.draft_round || "?");
+    const ownerRid = safeNumber(
+      pick.roster_id || pick.owner_id || pick.previous_owner_id,
+      null
+    );
+    const owner =
+      (Number.isFinite(ownerRid) &&
+        teamNameIndex[ownerRid] &&
+        teamNameIndex[ownerRid].teamName) ||
+      (Number.isFinite(ownerRid) ? `Roster ${ownerRid}` : "Unknown team");
+
+    return `${season} ${round} (${owner})`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bundle token / basic indices
+  // ---------------------------------------------------------------------------
+
   function bundleToken(bundle) {
     if (!bundle) return null;
     const weeks = bundle.matchupsByWeek
@@ -168,10 +260,6 @@ import { supabase } from "./supabase.js";
         : "na";
     return `${season}|w${weeks}|r${rosters}`;
   }
-
-  // ---------------------------------------------------------------------------
-  // Data preparation from Sleeper bundle
-  // ---------------------------------------------------------------------------
 
   function buildTeamNameIndex(bundle) {
     const users = bundle.users || [];
@@ -191,8 +279,7 @@ import { supabase } from "./supabase.js";
         (r.metadata && r.metadata.team_name) || r.team_name || null;
 
       const teamName =
-        teamNameFromMeta ||
-        (ownerName ? `${ownerName}` : `Team ${rid}`);
+        teamNameFromMeta || (ownerName ? `${ownerName}` : `Team ${rid}`);
 
       teamByRoster[rid] = {
         rosterId: rid,
@@ -204,10 +291,10 @@ import { supabase } from "./supabase.js";
     return teamByRoster;
   }
 
-  // Build player → { totalPoints, perWeek: { week: pts }, getPointsSince(..) }
+  // Build player → { total, perWeek }, plus helper getPointsSince(startWeek)
   function buildPlayerPointsIndex(bundle) {
     const matchupsByWeek = bundle.matchupsByWeek || {};
-    const index = {}; // { playerId: { total: number, perWeek: { week: pts } } }
+    const index = {};
 
     Object.keys(matchupsByWeek).forEach((wkStr) => {
       const wk = Number(wkStr);
@@ -228,7 +315,7 @@ import { supabase } from "./supabase.js";
       });
     });
 
-    function getPointsSince(pid, weekInclusive) {
+    function getPointsSince(pid, startWeekInclusive) {
       const entry = index[pid];
       if (!entry) return 0;
       const perWeek = entry.perWeek || {};
@@ -236,16 +323,64 @@ import { supabase } from "./supabase.js";
       Object.keys(perWeek).forEach((wkStr) => {
         const wk = Number(wkStr);
         if (!Number.isFinite(wk)) return;
-        if (wk >= weekInclusive) {
+        if (wk >= startWeekInclusive) {
           sum += perWeek[wk];
         }
       });
       return sum;
     }
 
+    function getAllPlayerIds() {
+      return Object.keys(index);
+    }
+
     return {
       rawIndex: index,
       getPointsSince,
+      getAllPlayerIds,
+    };
+  }
+
+  // Build a cache of positional ranks for any "start week":
+  //   rankCache.getRanks(startWeek) -> Map(playerId -> { pos, rank, points })
+  function buildPosRankCache(playerPointsIndex) {
+    const cache = new Map();
+
+    function getRanks(startWeek) {
+      if (cache.has(startWeek)) return cache.get(startWeek);
+
+      const allIds = playerPointsIndex.getAllPlayerIds();
+      const buckets = new Map(); // pos -> [{ playerId, points }]
+
+      allIds.forEach((pid) => {
+        const pos = getPlayerPos(pid);
+        if (!pos) return;
+        const pts = playerPointsIndex.getPointsSince(pid, startWeek);
+        if (pts <= 0) return;
+
+        if (!buckets.has(pos)) buckets.set(pos, []);
+        buckets.get(pos).push({ playerId: pid, points: pts });
+      });
+
+      const rankMap = new Map();
+
+      buckets.forEach((arr, pos) => {
+        arr.sort((a, b) => b.points - a.points);
+        arr.forEach((row, idx) => {
+          rankMap.set(row.playerId, {
+            pos,
+            rank: idx + 1,
+            points: row.points,
+          });
+        });
+      });
+
+      cache.set(startWeek, rankMap);
+      return rankMap;
+    }
+
+    return {
+      getRanks,
     };
   }
 
@@ -315,10 +450,13 @@ import { supabase } from "./supabase.js";
     };
   }
 
+  // Pull out players + picks received/sent by each roster
   function extractTradeSides(txn, teamNameIndex) {
     const raw = txn.raw || {};
     const adds = raw.adds || {};
     const drops = raw.drops || {};
+    const draftPicks = raw.draft_picks || [];
+
     const rosterIds = raw.roster_ids || raw.consenter_ids || [];
 
     const sides = [];
@@ -327,18 +465,41 @@ import { supabase } from "./supabase.js";
       const rid = Number(ridVal);
       if (!Number.isFinite(rid)) return;
 
-      const received = [];
-      const sent = [];
+      const receivedPlayers = [];
+      const sentPlayers = [];
+      const receivedPicks = [];
+      const sentPicks = [];
 
+      // Players
       Object.entries(adds).forEach(([playerId, toRoster]) => {
         if (Number(toRoster) === rid) {
-          received.push(String(playerId));
+          receivedPlayers.push(String(playerId));
         }
       });
 
       Object.entries(drops).forEach(([playerId, fromRoster]) => {
         if (Number(fromRoster) === rid) {
-          sent.push(String(playerId));
+          sentPlayers.push(String(playerId));
+        }
+      });
+
+      // Draft picks
+      draftPicks.forEach((pick) => {
+        const currentRid = safeNumber(pick.roster_id || pick.owner_id, null);
+        const prevRid = safeNumber(
+          pick.previous_owner_id != null
+            ? pick.previous_owner_id
+            : pick.owner_id,
+          null
+        );
+        if (!Number.isFinite(currentRid) || !Number.isFinite(prevRid)) return;
+        if (currentRid === prevRid) return;
+
+        if (currentRid === rid) {
+          receivedPicks.push(pick);
+        }
+        if (prevRid === rid) {
+          sentPicks.push(pick);
         }
       });
 
@@ -352,8 +513,10 @@ import { supabase } from "./supabase.js";
         rosterId: rid,
         teamName: teamInfo.teamName,
         ownerName: teamInfo.ownerName,
-        received,
-        sent,
+        receivedPlayers,
+        sentPlayers,
+        receivedPicks,
+        sentPicks,
       });
     });
 
@@ -361,49 +524,110 @@ import { supabase } from "./supabase.js";
   }
 
   function gradeTrade(txn, teamNameIndex) {
-    const sides = extractTradeSides(txn, teamNameIndex);
-    if (!sides.length) return null;
+    const sidesRaw = extractTradeSides(txn, teamNameIndex);
+    if (!sidesRaw.length) return null;
 
     const gradedSides = [];
-    let totalNetSum = 0;
+    let hasAnyKtc = false;
 
-    sides.forEach((side) => {
+    sidesRaw.forEach((sideRaw) => {
       let ktcReceived = 0;
       let ktcSent = 0;
 
-      side.received.forEach((pid) => {
-        const v = getPlayerKtc(pid);
-        if (v != null) ktcReceived += v;
+      const receivedAssets = [];
+      const sentAssets = [];
+
+      // Players – received
+      sideRaw.receivedPlayers.forEach((pid) => {
+        const playerId = String(pid);
+        const ktc = getPlayerKtc(playerId);
+        if (ktc != null) {
+          ktcReceived += ktc;
+          hasAnyKtc = true;
+        }
+
+        receivedAssets.push({
+          kind: "player",
+          playerId,
+          name: getPlayerName(playerId),
+          pos: getPlayerPos(playerId),
+          teamAbbr: getPlayerTeamAbbr(playerId),
+          ktc,
+          pointsSince: null, // filled later
+          posRankSince: null, // filled later
+        });
       });
 
-      side.sent.forEach((pid) => {
-        const v = getPlayerKtc(pid);
-        if (v != null) ktcSent += v;
+      // Players – sent
+      sideRaw.sentPlayers.forEach((pid) => {
+        const playerId = String(pid);
+        const ktc = getPlayerKtc(playerId);
+        if (ktc != null) {
+          ktcSent += ktc;
+          hasAnyKtc = true;
+        }
+
+        sentAssets.push({
+          kind: "player",
+          playerId,
+          name: getPlayerName(playerId),
+          pos: getPlayerPos(playerId),
+          teamAbbr: getPlayerTeamAbbr(playerId),
+          ktc,
+          pointsSince: null,
+          posRankSince: null,
+        });
       });
 
-      const net = ktcReceived - ktcSent;
-      totalNetSum += net;
+      // Picks – received
+      sideRaw.receivedPicks.forEach((pick) => {
+        const label = describeDraftPick(pick, teamNameIndex);
+        const ktc = getDraftPickKtc(pick);
+        if (ktc != null) {
+          ktcReceived += ktc;
+          hasAnyKtc = true;
+        }
+
+        receivedAssets.push({
+          kind: "pick",
+          pick,
+          label,
+          ktc,
+        });
+      });
+
+      // Picks – sent
+      sideRaw.sentPicks.forEach((pick) => {
+        const label = describeDraftPick(pick, teamNameIndex);
+        const ktc = getDraftPickKtc(pick);
+        if (ktc != null) {
+          ktcSent += ktc;
+          hasAnyKtc = true;
+        }
+
+        sentAssets.push({
+          kind: "pick",
+          pick,
+          label,
+          ktc,
+        });
+      });
+
+      const netKtc = ktcReceived - ktcSent;
 
       gradedSides.push({
-        rosterId: side.rosterId,
-        teamName: side.teamName,
-        ownerName: side.ownerName,
-        received: side.received,
-        sent: side.sent,
+        rosterId: sideRaw.rosterId,
+        teamName: sideRaw.teamName,
+        ownerName: sideRaw.ownerName,
         ktcReceived,
         ktcSent,
-        netKtc: net,
+        netKtc,
+        receivedAssets,
+        sentAssets,
       });
     });
 
-    const hasAnyKtc = gradedSides.some(
-      (s) =>
-        (Number.isFinite(s.ktcReceived) && s.ktcReceived > 0) ||
-        (Number.isFinite(s.ktcSent) && s.ktcSent > 0)
-    );
     if (!hasAnyKtc) return null;
-
-    // totalNetSum may be non-zero if picks or non-KTC assets are missing; that's fine.
 
     return {
       kind: "trade",
@@ -435,7 +659,7 @@ import { supabase } from "./supabase.js";
       .filter(([_pid, toRid]) => Number(toRid) === rid)
       .map(([pid]) => String(pid));
 
-    const droppedPlayers = Object.entries(drops)
+    const droppedPlayers = Object.entries(drops || {})
       .filter(([_pid, fromRid]) => Number(fromRid) === rid)
       .map(([pid]) => String(pid));
 
@@ -506,6 +730,32 @@ import { supabase } from "./supabase.js";
     };
   }
 
+  // Attach fantasy points + positional rank since trade for each RECEIVED player
+  function decorateTradesWithStats(trades, playerPointsIndex) {
+    if (!trades.length) return;
+
+    const rankCache = buildPosRankCache(playerPointsIndex);
+
+    trades.forEach((trade) => {
+      const txnWeek = safeNumber(trade.txn.week, 0);
+      const startWeek = Number.isFinite(txnWeek) && txnWeek > 0 ? txnWeek + 1 : 1;
+      const ranksForWindow = rankCache.getRanks(startWeek);
+
+      trade.sides.forEach((side) => {
+        side.receivedAssets.forEach((asset) => {
+          if (asset.kind !== "player") return;
+
+          const pid = asset.playerId;
+          const pts = playerPointsIndex.getPointsSince(pid, startWeek);
+          asset.pointsSince = pts;
+
+          const rankEntry = ranksForWindow.get(pid) || null;
+          asset.posRankSince = rankEntry ? rankEntry.rank : null;
+        });
+      });
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Build "receipt" objects from bundle + transactions
   // ---------------------------------------------------------------------------
@@ -550,10 +800,13 @@ import { supabase } from "./supabase.js";
         return;
       }
 
-      // Other types (drops, IR moves, etc.) ignored for now.
+      // commissioner moves, drops-only, etc. ignored for grading.
     });
 
-    // Sort receipts chronologically (season, week, executedAt)
+    // Attach fantasy stats for trade players (received side only)
+    decorateTradesWithStats(tradeReceipts, playerPointsIndex);
+
+    // Sort all receipts chronologically
     allReceipts.sort((a, b) => {
       const sA = String(a.txn.season || "");
       const sB = String(b.txn.season || "");
@@ -576,7 +829,7 @@ import { supabase } from "./supabase.js";
   }
 
   // ---------------------------------------------------------------------------
-  // Rendering
+  // Rendering helpers + modal
   // ---------------------------------------------------------------------------
 
   function maybeRenderLoading(message) {
@@ -584,6 +837,255 @@ import { supabase } from "./supabase.js";
     if (!container) return;
     container.innerHTML = `<div class="loading">${message}</div>`;
   }
+
+  function ensureDetailDialog() {
+    if (detailDialog) return;
+
+    detailDialog = document.createElement("dialog");
+    detailDialog.id = "receipts-detail-dialog";
+    detailDialog.className = "summary-dialog receipts-dialog";
+
+    detailDialog.innerHTML = `
+      <form method="dialog" class="summary-dialog-inner receipts-dialog-inner">
+        <header class="summary-dialog-header receipts-dialog-header">
+          <div>
+            <div class="kicker">Transaction Detail</div>
+            <div id="receipts-detail-title" class="summary-title">—</div>
+          </div>
+          <button type="submit" class="ghost-btn">Close</button>
+        </header>
+        <div id="receipts-detail-body" class="summary-dialog-body small"></div>
+      </form>
+    `;
+
+    document.body.appendChild(detailDialog);
+    detailDialogTitle = detailDialog.querySelector("#receipts-detail-title");
+    detailDialogBody = detailDialog.querySelector("#receipts-detail-body");
+
+    // backdrop close
+    detailDialog.addEventListener("click", (e) => {
+      const rect = detailDialog.getBoundingClientRect();
+      const inDialog =
+        rect.top <= e.clientY &&
+        e.clientY <= rect.top + rect.height &&
+        rect.left <= e.clientX &&
+        e.clientX <= rect.left + rect.width;
+      if (!inDialog) {
+        try {
+          detailDialog.close();
+        } catch (_) {}
+      }
+    });
+  }
+
+  function openReceiptDetail(receipt) {
+    if (!receipt) return;
+    ensureDetailDialog();
+
+    const txn = receipt.txn || {};
+    const season = txn.season || "";
+    const week = Number.isFinite(txn.week) ? txn.week : "?";
+    const ts = formatDateISO(txn.executedAt);
+
+    let title = "";
+    if (receipt.kind === "trade") {
+      const teams = Array.from(
+        new Set((receipt.sides || []).map((s) => s.teamName))
+      );
+      title = `Trade – ${teams.join(" ↔ ")}`;
+    } else if (receipt.kind === "waiver") {
+      title = `${receipt.label} – ${receipt.move.teamName}`;
+    } else {
+      title = "Transaction";
+    }
+
+    const metaPieces = [`Season ${season}`, `Week ${week}`];
+    if (ts) metaPieces.push(ts);
+    const metaLine = metaPieces.join(" • ");
+
+    detailDialogTitle.textContent = title;
+    detailDialogBody.innerHTML =
+      receipt.kind === "trade"
+        ? renderTradeDetailCard(receipt, metaLine)
+        : renderWaiverDetailCard(receipt, metaLine);
+
+    if (typeof detailDialog.showModal === "function") {
+      detailDialog.showModal();
+    }
+  }
+
+  // ---- Trade detail card: two columns, only "Received" for each team ----
+
+  function renderTradeDetailCard(receipt, metaLine) {
+    const sidesHtml = (receipt.sides || [])
+      .map((s) => renderTradeSideDetail(s))
+      .join("");
+
+    return `
+      <article class="receipt-card receipt-card--detail">
+        <header class="receipt-header">
+          <div>
+            <div class="receipt-tag trade">Trade</div>
+            <div class="receipt-meta small">${metaLine}</div>
+          </div>
+        </header>
+        <div class="receipt-body receipt-body--two-col">
+          ${sidesHtml}
+        </div>
+      </article>
+    `;
+  }
+
+  function renderTradeSideDetail(side) {
+    const netStr = formatSignedInt(side.netKtc);
+
+    // Gave up summary (names only)
+    const gaveUpNames = side.sentAssets
+      .filter((a) => a.kind === "player")
+      .map((a) => a.name);
+    const gaveUpLine = gaveUpNames.length
+      ? gaveUpNames.join(", ")
+      : "No outgoing assets recorded.";
+
+    const receivedMarkup = side.receivedAssets
+      .map((asset) => renderReceivedAssetRow(asset))
+      .join("");
+
+    return `
+      <section class="receipt-side">
+        <header class="receipt-side-header">
+          <span class="receipt-team">${side.teamName}</span>
+          <span class="receipt-net small">Net KTC: <strong>${netStr}</strong></span>
+        </header>
+
+        <div class="receipt-row small">
+          <span class="label">Received</span>
+        </div>
+
+        <div class="receipt-assets">
+          ${receivedMarkup || `<div class="small muted">No incoming assets recorded.</div>`}
+        </div>
+
+        <div class="receipt-gaveup small">
+          Gave up: <span>${gaveUpLine}</span>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderReceivedAssetRow(asset) {
+    if (asset.kind === "player") {
+      const statsBits = [];
+
+      if (typeof asset.pointsSince === "number" && asset.pointsSince > 0) {
+        statsBits.push(`${asset.pointsSince.toFixed(1)} pts since`);
+      }
+
+      if (typeof asset.posRankSince === "number") {
+        statsBits.push(`${asset.pos}${asset.posRankSince}`);
+      }
+
+      const statsText = statsBits.join(" • ");
+
+      const teamLine = [
+        asset.pos || "",
+        asset.teamAbbr || "",
+      ]
+        .filter(Boolean)
+        .join(" • ");
+
+      const ktcText =
+        asset.ktc != null ? `${Math.round(asset.ktc).toLocaleString()} KTC` : "—";
+
+      return `
+        <div class="receipt-asset">
+          <div class="receipt-asset-main">
+            <div class="receipt-asset-name">${asset.name}</div>
+            <div class="receipt-asset-sub small">${teamLine}</div>
+          </div>
+          <div class="receipt-asset-meta">
+            <div class="receipt-asset-ktc">${ktcText}</div>
+            ${
+              statsText
+                ? `<div class="receipt-asset-stat small">${statsText}</div>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+    }
+
+    if (asset.kind === "pick") {
+      const ktcText =
+        asset.ktc != null ? `${Math.round(asset.ktc).toLocaleString()} KTC` : "—";
+
+      return `
+        <div class="receipt-asset">
+          <div class="receipt-asset-main">
+            <div class="receipt-asset-name">${asset.label}</div>
+            <div class="receipt-asset-sub small">Draft pick</div>
+          </div>
+          <div class="receipt-asset-meta">
+            <div class="receipt-asset-ktc">${ktcText}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    return "";
+  }
+
+  // ---- Waiver detail card (same as before, just split into its own fn) ----
+
+  function renderWaiverDetailCard(receipt, metaLine) {
+    const m = receipt.move;
+    const pts = formatFixed(receipt.totalPoints, 1);
+    const faab = m.faabSpent;
+    const fpp = Number.isFinite(receipt.faabPerPoint)
+      ? formatFixed(receipt.faabPerPoint, 2) + " FAAB/pt"
+      : faab > 0
+      ? "No points yet"
+      : "Free";
+
+    const players = m.addedPlayers.length
+      ? formatPlayerList(m.addedPlayers)
+      : "Unknown";
+
+    return `
+      <article class="receipt-card receipt-card--detail">
+        <header class="receipt-header">
+          <div>
+            <div class="receipt-tag waiver">${receipt.label}</div>
+            <div class="receipt-meta small">${metaLine}</div>
+          </div>
+        </header>
+        <div class="receipt-body">
+          <div class="receipt-side">
+            <div class="receipt-side-header">
+              <span class="receipt-team">${m.teamName}</span>
+              <span class="receipt-net">FAAB: ${faab}</span>
+            </div>
+            <div class="receipt-row small">
+              <span class="label">Added:</span>
+              <span>${players}</span>
+            </div>
+            <div class="receipt-row small">
+              <span class="label">Points Since:</span>
+              <span>${pts}</span>
+            </div>
+            <div class="receipt-row small">
+              <span class="label">Efficiency:</span>
+              <span>${fpp}</span>
+            </div>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Summary strip at the top of the tab
+  // ---------------------------------------------------------------------------
 
   function renderSummary(receiptsData) {
     const summaryEl = document.getElementById("receipts-summary");
@@ -624,36 +1126,31 @@ import { supabase } from "./supabase.js";
       gradedWaivers[gradedWaivers.length - 1] || null;
 
     let html = "";
-
     html += '<div class="receipts-summary-block">';
 
     if (topFleece) {
       html += `<p><strong>Biggest Fleece (by KTC):</strong> ${
         topFleece.teamName
-      } is +${formatNumber(
-        topFleece.netKtc,
-        0
+      } is ${formatSignedInt(
+        topFleece.netKtc
       )} KTC in their favor on a single trade.</p>`;
     }
 
     if (worstFleece && worstFleece !== topFleece) {
       html += `<p><strong>On the Wrong End:</strong> ${
         worstFleece.teamName
-      } is ${
-        worstFleece.netKtc > 0 ? "+" : ""
-      }${formatNumber(
-        worstFleece.netKtc,
-        0
+      } is ${formatSignedInt(
+        worstFleece.netKtc
       )} KTC on their worst trade (current values).</p>`;
     }
 
     if (bestWaiver) {
       html += `<p><strong>Best FAAB Value:</strong> ${
         bestWaiver.move.teamName
-      } spent ${bestWaiver.move.faabSpent} FAAB for ${formatNumber(
+      } spent ${bestWaiver.move.faabSpent} FAAB for ${formatFixed(
         bestWaiver.totalPoints,
         1
-      )} pts (${formatNumber(
+      )} pts (${formatFixed(
         bestWaiver.faabPerPoint,
         2
       )} FAAB/pt).</p>`;
@@ -662,10 +1159,10 @@ import { supabase } from "./supabase.js";
     if (worstWaiver && worstWaiver !== bestWaiver) {
       html += `<p><strong>Worst FAAB Efficiency:</strong> ${
         worstWaiver.move.teamName
-      } spent ${worstWaiver.move.faabSpent} FAAB for ${formatNumber(
+      } spent ${worstWaiver.move.faabSpent} FAAB for ${formatFixed(
         worstWaiver.totalPoints,
         1
-      )} pts (${formatNumber(
+      )} pts (${formatFixed(
         worstWaiver.faabPerPoint,
         2
       )} FAAB/pt).</p>`;
@@ -679,160 +1176,202 @@ import { supabase } from "./supabase.js";
     summaryEl.innerHTML = html;
   }
 
-  function renderReceiptCard(receipt) {
-    const txn = receipt.txn;
-    const season = txn.season || "";
-    const week = Number.isFinite(txn.week) ? txn.week : "?";
-    const ts = formatDateISO(txn.executedAt);
+  // ---------------------------------------------------------------------------
+  // List layout: Trades + Free Agency sections
+  // ---------------------------------------------------------------------------
 
-    if (receipt.kind === "trade") {
-      const sidesHtml = receipt.sides
-        .map((s) => {
-          const sentList =
-            s.sent && s.sent.length
-              ? s.sent.map((pid) => shortName(pid, 12)).join(", ")
-              : "None";
-          const receivedList =
-            s.received && s.received.length
-              ? s.received
-                  .map((pid) => shortName(pid, 12))
-                  .join(", ")
-              : "None";
-          const netStr =
-            s.netKtc > 0
-              ? `+${formatNumber(s.netKtc, 0)}`
-              : formatNumber(s.netKtc, 0);
+  function indexReceiptsForModal(receiptsData) {
+    receiptsIndexById.clear();
+    (receiptsData.receipts || []).forEach((r) => {
+      const id = r.txn && r.txn.id;
+      if (id) receiptsIndexById.set(String(id), r);
+    });
+  }
 
-          return `
-            <div class="receipt-side">
-              <div class="receipt-side-header">
-                <span class="receipt-team">${s.teamName}</span>
-                <span class="receipt-net">Net KTC: ${netStr}</span>
-              </div>
-              <div class="receipt-row small">
-                <span class="label">Sent:</span> <span>${sentList}</span>
-              </div>
-              <div class="receipt-row small">
-                <span class="label">Received:</span> <span>${receivedList}</span>
-              </div>
-            </div>
-          `;
-        })
-        .join("");
-
-      return `
-        <article class="receipt-card">
-          <header class="receipt-header">
-            <div>
-              <div class="receipt-tag trade">Trade</div>
-              <div class="receipt-meta small">Season ${season} • Week ${week}${
-        ts ? " • " + ts : ""
-      }</div>
-            </div>
-          </header>
-          <div class="receipt-body">
-            ${sidesHtml}
-          </div>
-        </article>
-      `;
+  function renderTradeList(trades) {
+    if (!trades.length) {
+      return '<p class="small">No trades recorded yet.</p>';
     }
 
-    if (receipt.kind === "waiver") {
-      const m = receipt.move;
-      const pts = formatNumber(receipt.totalPoints, 1);
-      const faab = m.faabSpent;
-      const fpp = Number.isFinite(receipt.faabPerPoint)
-        ? formatNumber(receipt.faabPerPoint, 2) + " FAAB/pt"
-        : faab > 0
-        ? "No points yet"
-        : "Free";
+    const sorted = [...trades].sort((a, b) => {
+      const tA = new Date(a.txn.executedAt || 0).getTime();
+      const tB = new Date(b.txn.executedAt || 0).getTime();
+      return tB - tA; // newest first
+    });
 
-      const players = m.addedPlayers.length
-        ? m.addedPlayers.map((pid) => shortName(pid, 12)).join(", ")
-        : "Unknown";
+    const rows = sorted
+      .map((t) => {
+        const txn = t.txn || {};
+        const id = String(txn.id);
+        const week = Number.isFinite(txn.week) ? txn.week : "?";
+        const ts = formatDateISO(txn.executedAt);
+        const teams = Array.from(
+          new Set((t.sides || []).map((s) => s.teamName))
+        );
+        const label = teams.join(" ↔ ");
 
-      return `
-        <article class="receipt-card">
-          <header class="receipt-header">
-            <div>
-              <div class="receipt-tag waiver">${receipt.label}</div>
-              <div class="receipt-meta small">Season ${season} • Week ${week}${
-        ts ? " • " + ts : ""
-      }</div>
+        const bestSide =
+          (t.sides || []).reduce(
+            (best, s) => (best == null || s.netKtc > best.netKtc ? s : best),
+            null
+          ) || null;
+
+        const bestDelta =
+          bestSide && Number.isFinite(bestSide.netKtc)
+            ? formatSignedInt(bestSide.netKtc)
+            : null;
+
+        const metaPieces = [`Week ${week}`];
+        if (ts) metaPieces.push(ts);
+        const meta = metaPieces.join(" • ");
+
+        const badgeText = bestDelta
+          ? `${shortName(bestSide.teamName, 14)} ${bestDelta}`
+          : "View";
+
+        return `
+          <button
+            type="button"
+            class="receipts-row receipts-row--trade"
+            data-receipt-id="${id}"
+          >
+            <div class="receipts-row-main">
+              <div class="receipts-row-title">${label}</div>
+              <div class="receipts-row-meta small">${meta}</div>
             </div>
-          </header>
-          <div class="receipt-body">
-            <div class="receipt-side">
-              <div class="receipt-side-header">
-                <span class="receipt-team">${m.teamName}</span>
-                <span class="receipt-net">FAAB: ${faab}</span>
-              </div>
-              <div class="receipt-row small">
-                <span class="label">Added:</span> <span>${players}</span>
-              </div>
-              <div class="receipt-row small">
-                <span class="label">Points Since:</span> <span>${pts}</span>
-              </div>
-              <div class="receipt-row small">
-                <span class="label">Efficiency:</span> <span>${fpp}</span>
-              </div>
+            <div class="receipts-row-badge small">
+              ${badgeText}
             </div>
-          </div>
-        </article>
-      `;
+          </button>
+        `;
+      })
+      .join("");
+
+    return `
+      <div class="receipts-section-body receipts-section-body--trades">
+        ${rows}
+      </div>
+    `;
+  }
+
+  function renderWaiverList(waivers) {
+    if (!waivers.length) {
+      return '<p class="small">No free agency or waiver pickups graded yet.</p>';
     }
 
-    return "";
+    const sorted = [...waivers].sort((a, b) => {
+      const tA = new Date(a.txn.executedAt || 0).getTime();
+      const tB = new Date(b.txn.executedAt || 0).getTime();
+      return tB - tA; // newest first
+    });
+
+    const rows = sorted
+      .map((w) => {
+        const txn = w.txn || {};
+        const id = String(txn.id);
+        const week = Number.isFinite(txn.week) ? txn.week : "?";
+        const ts = formatDateISO(txn.executedAt);
+
+        const m = w.move;
+        const primary =
+          m.addedPlayers && m.addedPlayers.length
+            ? getPlayerLabel(m.addedPlayers[0])
+            : "Player";
+        const extraCount = (m.addedPlayers || []).length - 1;
+        const playerLabel =
+          extraCount > 0 ? `${primary} +${extraCount}` : primary;
+
+        const metaPieces = [`Week ${week}`];
+        if (ts) metaPieces.push(ts);
+        const meta = metaPieces.join(" • ");
+
+        const pts = formatFixed(w.totalPoints, 1);
+        const faab = m.faabSpent;
+        const rightLabel =
+          faab > 0
+            ? `${faab} FAAB → ${pts} pts`
+            : `${pts} pts`;
+
+        return `
+          <button
+            type="button"
+            class="receipts-row receipts-row--waiver"
+            data-receipt-id="${id}"
+          >
+            <div class="receipts-row-main">
+              <div class="receipts-row-title">${m.teamName}</div>
+              <div class="receipts-row-meta small">
+                ${playerLabel} • ${meta}
+              </div>
+            </div>
+            <div class="receipts-row-badge small">
+              <span class="receipts-row-label">${w.label}</span>
+              <span class="receipts-row-stat">${rightLabel}</span>
+            </div>
+          </button>
+        `;
+      })
+      .join("");
+
+    return `
+      <div class="receipts-section-body receipts-section-body--waivers">
+        ${rows}
+      </div>
+    `;
   }
 
   function renderReceipts(receiptsData) {
     const listEl = document.getElementById("receipts-list");
     if (!listEl) return;
 
-    const receipts = receiptsData.receipts || [];
+    const trades = receiptsData.trades || [];
+    const waivers = receiptsData.waivers || [];
 
-    if (!receipts.length) {
+    indexReceiptsForModal(receiptsData);
+
+    if (!trades.length && !waivers.length) {
       listEl.innerHTML =
         '<p class="small">No graded transactions found. Once your Supabase <code>transactions</code> table has data for this league, we’ll start showing trade and waiver receipts here.</p>';
       return;
     }
 
-    const bySeason = groupBy(
-      receipts,
-      (r) => r.txn.season || "Unknown"
-    );
-    const seasonsSorted = Array.from(bySeason.keys()).sort((a, b) =>
-      String(a).localeCompare(String(b))
-    );
-
     let html = "";
+    html += `<div class="receipts-columns">`;
 
-    seasonsSorted.forEach((season) => {
-      const seasonReceipts = bySeason.get(season) || [];
-      const byWeek = groupBy(
-        seasonReceipts,
-        (r) => r.txn.week || "?"
-      );
-      const weeksSorted = Array.from(byWeek.keys()).sort(
-        (a, b) => safeNumber(a) - safeNumber(b)
-      );
+    html += `
+      <section class="receipts-section receipts-section--trades">
+        <h3 class="season-subheading">Trades</h3>
+        <p class="small" style="margin-bottom:8px;">
+          Ranked by most recent. Click a row to see the full breakdown, KTC deltas, and per-player results since the trade.
+        </p>
+        ${renderTradeList(trades)}
+      </section>
+    `;
 
-      html += `<section class="receipts-season-block">
-        <h3 class="season-subheading">Season ${season}</h3>
-      `;
+    html += `
+      <section class="receipts-section receipts-section--waivers">
+        <h3 class="season-subheading">Free Agency & Waivers</h3>
+        <p class="small" style="margin-bottom:8px;">
+          FAAB efficiency and free-gem pickups since each move was made.
+        </p>
+        ${renderWaiverList(waivers)}
+      </section>
+    `;
 
-      weeksSorted.forEach((week) => {
-        const weekReceipts = byWeek.get(week) || [];
-        html += `<h4 class="receipts-week-heading">Week ${week}</h4>`;
-        weekReceipts.forEach((r) => {
-          html += renderReceiptCard(r);
-        });
-      });
-
-      html += `</section>`;
-    });
+    html += `</div>`;
 
     listEl.innerHTML = html;
+
+    // Row click handler (single delegated listener)
+    listEl.onclick = function (e) {
+      const btn = e.target.closest("[data-receipt-id]");
+      if (!btn) return;
+      const id = btn.getAttribute("data-receipt-id");
+      const receipt = receiptsIndexById.get(String(id));
+      if (receipt) {
+        openReceiptDetail(receipt);
+      }
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -842,7 +1381,6 @@ import { supabase } from "./supabase.js";
   async function refreshFromBundleInternal(bundle) {
     const tab = document.getElementById("tab-receipts");
     if (!tab) {
-      // If there is no Receipts tab in the DOM yet, silently do nothing.
       return;
     }
 
@@ -881,7 +1419,6 @@ import { supabase } from "./supabase.js";
     const token = bundleToken(bundle);
     if (!token || token === lastBundleToken) return;
 
-    // Fire async, but don't await here.
     refreshFromBundleInternal(bundle);
   }
 
@@ -902,7 +1439,6 @@ import { supabase } from "./supabase.js";
       window.KTCClient
         .whenReady()
         .then(() => {
-          // Force recompute next time
           lastBundleToken = null;
           refreshIfBundleChanged();
         })

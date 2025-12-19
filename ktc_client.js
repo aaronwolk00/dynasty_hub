@@ -4,15 +4,17 @@
 //
 // Responsibilities:
 //   • Load ALL KTC rows from Supabase (with pagination).
-//   • Map rows to Sleeper player ids using:
-//       - explicit sleeper_id column when present, OR
-//       - fuzzy match on player_name + position (+ team) vs __SLEEPER_PLAYER_MAP__.
+//   • Build a "Rosetta Stone" mapping from Sleeper player ids → KTC values
+//       using:
+//         - explicit sleeper_id in ktc_values when present, OR
+//         - fuzzy match on normalized(player_name) + normalized(position)
+//           against window.__SLEEPER_PLAYER_MAP__.
 //   • Cache by Sleeper player id for fast lookups.
 //   • Expose:
 //
 //       KTCClient.whenReady() -> Promise<cache>
 //       KTCClient.loadAll() -> Promise<cache> (alias)
-//       KTCClient.getBySleeperId(id) -> { ...normalizedRow } | null
+//       KTCClient.getBySleeperId(id) -> { sleeperId, value, ... } | null
 //       KTCClient.getBestValueForSleeperId(id) -> number | null
 //       KTCClient._debugDump() -> deep copy of cache
 //
@@ -32,9 +34,25 @@
 //     maxPages: 20,
 //   }
 //
-// If no Supabase client is available, KTCClient becomes a no-op:
-//   - whenReady()/loadAll() resolve to {}
-//   - all getters return null
+// This implementation assumes a table shaped roughly like:
+//
+//   ktc_values(
+//     id                bigserial,
+//     ktc_player_id     text,
+//     player_name       text,
+//     position          text,   -- e.g. 'QB1', 'WR5', 'RB2', 'TE1', ...
+//     nfl_team          text,
+//     format            text,
+//     ktc_rank          integer,
+//     ktc_value         numeric,
+//     as_of_date        date,
+//     inserted_at       timestamptz,
+//     sleeper_id        text,
+//     sleeper_match_confidence numeric,
+//     sleeper_player_id text
+//   );
+//
+// If no Supabase client is available, KTCClient becomes a no-op.
 // -----------------------------------------------------------------------------
 
 import { supabase } from "./supabase.js";
@@ -43,7 +61,7 @@ import { supabase } from "./supabase.js";
   "use strict";
 
   // ---------------------------------------------------------------------------
-  // Local helpers
+  // Small helpers
   // ---------------------------------------------------------------------------
 
   function deepClone(obj) {
@@ -56,37 +74,60 @@ import { supabase } from "./supabase.js";
   }
 
   function safeNumber(x, fallback) {
-    if (fallback === void 0) fallback = 0;
+    if (fallback === void 0) fallback = null;
     const n = Number(x);
     return Number.isFinite(n) ? n : fallback;
   }
 
-  function normalizeName(str) {
-    return String(str || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
+  // "Secret sauce" name normalizer:
+  // - lowercase
+  // - strip non-alphanumerics
+  // - drop suffixes (III, II, Jr, Sr)
+  // - handle a few common nickname stems
+  function normalizeName(name) {
+    if (!name) return "";
+    let s = String(name).toLowerCase();
+    s = s.replace(/[^a-z0-9]/g, ""); // remove spaces, dots, apostrophes, hyphens
+    s = s.replace(/iii$/g, "");
+    s = s.replace(/ii$/g, "");
+    s = s.replace(/jr$/g, "");
+    s = s.replace(/sr$/g, "");
+
+    // Common nickname mappings – extend as you find new cases
+    s = s.replace(/^gabriel/, "gabe");
+    s = s.replace(/^kenneth/, "ken");
+    s = s.replace(/^matthew/, "matt");
+    s = s.replace(/^christopher/, "chris");
+    s = s.replace(/^joshua/, "josh");
+
+    return s;
+  }
+
+  // Normalize positions like "QB1", "WR5", "RB2" -> "qb", "wr", "rb"
+  // so they line up with Sleeper "QB", "WR", etc.
+  function normalizePosition(pos) {
+    if (!pos) return "";
+    const raw = String(pos).toLowerCase();
+    // keep only letters, then drop trailing digits just in case
+    return raw.replace(/[^a-z]/g, "").replace(/\d+$/, "");
   }
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
-  
+
   async function waitForPlayerMapReady() {
-    // If the preload script exposed a promise, use it
-    const p = window.__PLAYER_MAP_READY__;
+    const p = typeof window !== "undefined" && window.__PLAYER_MAP_READY__;
     if (p && typeof p.then === "function") {
       try {
         await p;
         return;
-      } catch {
-        // swallow; we'll just fall back to whatever __SLEEPER_PLAYER_MAP__ is
+      } catch (_err) {
+        // fall through to small delay
       }
     }
-  
-    // Fallback: small delay to give the preload script time to run
     await sleep(300);
   }
-  
 
   // ---------------------------------------------------------------------------
   // Config extraction
@@ -101,24 +142,37 @@ import { supabase } from "./supabase.js";
   const KTC_TABLE = supaCfg.ktcTable || ktcCfg.table || "ktc_values";
 
   const PAGE_SIZE =
-    safeNumber(supaCfg.ktcPageSize, null) ||
-    safeNumber(ktcCfg.pageSize, null) ||
-    300; // default
+    safeNumber(supaCfg.ktcPageSize) ||
+    safeNumber(ktcCfg.pageSize) ||
+    300;
 
   const MAX_PAGES =
-    safeNumber(supaCfg.ktcMaxPages, null) ||
-    safeNumber(ktcCfg.maxPages, null) ||
+    safeNumber(supaCfg.ktcMaxPages) ||
+    safeNumber(ktcCfg.maxPages) ||
     20;
 
   // ---------------------------------------------------------------------------
   // Internal state
   // ---------------------------------------------------------------------------
 
-  let cacheBySleeperId = null; // { [sleeperId]: NormalizedRow }
+  /**
+   * cacheBySleeperId: {
+   *   [sleeperId: string]: {
+   *     sleeperId: string,
+   *     value: number,          // primary dynasty value (e.g. ktc_value)
+   *     playerName: string,
+   *     position: string,
+   *     team: string,
+   *     mappingType: 'explicit' | 'fuzzy',
+   *     raw: any                // original row
+   *   }
+   * }
+   */
+  let cacheBySleeperId = null;
   let loadPromise = null;
 
   // ---------------------------------------------------------------------------
-  // Fetching with pagination (uses shared Supabase client from supabase.js)
+  // Supabase pagination
   // ---------------------------------------------------------------------------
 
   async function fetchPage(pageIndex) {
@@ -132,8 +186,8 @@ import { supabase } from "./supabase.js";
     const { data, error, count } = await supabase
       .from(KTC_TABLE)
       .select("*", { count: "exact", head: false })
-      .range(from, to)
-      .order("ktc_rank", { ascending: true });
+      .order("as_of_date", { ascending: false }) // newest first
+      .range(from, to);
 
     if (error) {
       console.error("[KTCClient] Supabase error:", error);
@@ -148,58 +202,41 @@ import { supabase } from "./supabase.js";
   }
 
   // ---------------------------------------------------------------------------
-  // Sleeper mapping helpers – join KTC rows to Sleeper IDs
+  // Core loader: fetch all KTC rows, build lookup, then map to Sleeper
   // ---------------------------------------------------------------------------
 
-  function buildSleeperIndex() {
-    const playerMap = window.__SLEEPER_PLAYER_MAP__ || {};
-    const idx = {}; // key: "normalizedName|POS" -> [ { sleeperId, team } ]
+  function addMapping(bySleeperId, sleeperId, row, mappingType) {
+    const sid = String(sleeperId);
+    const value = safeNumber(row.ktc_value, null);
+    if (value == null) return;
 
-    Object.entries(playerMap).forEach(([sleeperId, meta]) => {
-      const name = meta.full_name || "";
-      const pos = (meta.position || "").toUpperCase();
-      const team = (meta.team || "").toUpperCase();
-      const keyName = normalizeName(name);
-      if (!keyName || !pos) return;
+    const existing = bySleeperId[sid];
 
-      const key = keyName + "|" + pos;
-      if (!idx[key]) idx[key] = [];
-      idx[key].push({ sleeperId, team });
-    });
+    const mapped = {
+      sleeperId: sid,
+      value,
+      playerName: row.player_name || row.name || row.full_name || null,
+      position: row.position || null,
+      team: row.nfl_team || row.team || null,
+      mappingType,
+      raw: row,
+    };
 
-    return idx;
-  }
-
-  function guessSleeperIdFromRow(row, sleeperIndex) {
-    if (!sleeperIndex) return null;
-
-    const name =
-      row.player_name || row.name || row.full_name || row.player || "";
-    const pos = (row.position || row.pos || "").toUpperCase();
-    const team = (row.team || row.nfl_team || "").toUpperCase();
-
-    const keyName = normalizeName(name);
-    if (!keyName || !pos) return null;
-
-    const key = keyName + "|" + pos;
-    const candidates = sleeperIndex[key];
-    if (!candidates || !candidates.length) return null;
-
-    if (team) {
-      const exact = candidates.find((c) => c.team === team);
-      if (exact) return exact.sleeperId;
+    if (!existing) {
+      bySleeperId[sid] = mapped;
+      return;
     }
 
-    // Fallback: first candidate
-    return candidates[0].sleeperId;
+    // Prefer higher value if there's a conflict; if equal, keep existing
+    if (mapped.value > existing.value) {
+      bySleeperId[sid] = mapped;
+    }
   }
 
-  // ---------------------------------------------------------------------------
-  // Core loader with join logic
-  // ---------------------------------------------------------------------------
-
   async function loadAllInternal() {
-    if (cacheBySleeperId) return cacheBySleeperId;
+    if (cacheBySleeperId) {
+      return cacheBySleeperId;
+    }
 
     if (!supabase) {
       console.warn(
@@ -208,8 +245,6 @@ import { supabase } from "./supabase.js";
       cacheBySleeperId = {};
       return cacheBySleeperId;
     }
-
-    await waitForPlayerMapReady();
 
     console.log(
       "[KTCClient] Loading KTC values from Supabase table `" +
@@ -243,9 +278,7 @@ import { supabase } from "./supabase.js";
             (totalCountSeen != null ? " of ~" + totalCountSeen + ")" : ")")
         );
       } else {
-        console.log(
-          "[KTCClient] Page " + (page + 1) + " returned 0 rows."
-        );
+        console.log("[KTCClient] Page " + (page + 1) + " returned 0 rows.");
       }
 
       if (out.done) break;
@@ -267,163 +300,122 @@ import { supabase } from "./supabase.js";
       console.log("[KTCClient] Sample KTC row keys:", Object.keys(sample));
     }
 
-    // Build Sleeper index once (if player map exists)
-    const playerMap = window.__SLEEPER_PLAYER_MAP__ || {};
-    const hasPlayerMap = playerMap && Object.keys(playerMap).length > 0;
-    const sleeperIndex = hasPlayerMap ? buildSleeperIndex() : null;
+    // -----------------------------------------------------------------------
+    // Step 1 – Build "normalizedName_position" → { value, row } lookup
+    // -----------------------------------------------------------------------
+    const ktcLookup = {}; // key: "nameKey_posKey" => { value, row }
+    let usableKtcRows = 0;
 
-    if (!hasPlayerMap) {
+    allRows.forEach((row) => {
+      const rawName =
+        row.player_name || row.name || row.full_name || row.player || "";
+      const nameKey = normalizeName(rawName);
+      const posKey = normalizePosition(row.position);
+
+      const value = safeNumber(row.ktc_value, null);
+
+      if (!nameKey || !posKey || value == null) {
+        return;
+      }
+
+      const key = nameKey + "_" + posKey;
+
+      // We ordered by as_of_date DESC, so first row for a key is the freshest.
+      if (!ktcLookup[key]) {
+        ktcLookup[key] = { value, row };
+        usableKtcRows += 1;
+      }
+    });
+
+    console.log(
+      "[KTCClient] Built KTC lookup with " +
+        usableKtcRows +
+        " usable rows (normalized name + position)."
+    );
+
+    // -----------------------------------------------------------------------
+    // Step 2 – Wait for Sleeper player map and map SleeperId -> KTC
+    // -----------------------------------------------------------------------
+    await waitForPlayerMapReady();
+    const sleeperMap = (typeof window !== "undefined" && window.__SLEEPER_PLAYER_MAP__) || {};
+    const sleeperIds = Object.keys(sleeperMap || {});
+
+    if (!sleeperIds.length) {
       console.warn(
         "[KTCClient] __SLEEPER_PLAYER_MAP__ not available or empty. " +
-          "Only rows with explicit Sleeper IDs will be usable."
+          "KTC mapping cannot be built."
       );
+      cacheBySleeperId = {};
+      return cacheBySleeperId;
     }
 
     const bySleeperId = {};
     let explicitMapped = 0;
     let fuzzyMapped = 0;
-    let skippedNoId = 0;
 
+    // 2A. Explicit mapping from rows with sleeper_id populated
     allRows.forEach((row) => {
-      // 1) Try explicit Sleeper id columns (prefer `sleeper_id`)
-      let sidRaw =
+      const sid =
         row.sleeper_id ||
-        row.sleeperId ||
-        row.sleeperid ||
         row.sleeper_player_id ||
+        row.sleeperId ||
         row.sleeper_playerid ||
-        row.player_id ||
-        row.playerId ||
-        row.playerid ||
         null;
 
-      let mappingType = null;
-
-      if (sidRaw) {
-        mappingType = "explicit";
-        explicitMapped += 1;
-      } else if (sleeperIndex) {
-        // 2) Fallback: join by name/pos/team against Sleeper map
-        const guessed = guessSleeperIdFromRow(row, sleeperIndex);
-        if (guessed) {
-          sidRaw = guessed;
-          mappingType = "fuzzy";
-          fuzzyMapped += 1;
-        }
-      }
-
-      if (!sidRaw) {
-        skippedNoId += 1;
-        return;
-      }
-
-      const key = String(sidRaw);
-      const existing = bySleeperId[key];
-
-      // ----------------------------
-      // Value extraction:
-      //   • Prefer explicit SF/1QB columns if present.
-      //   • Else fall back to ktc_value (from your ktc_values table).
-      // ----------------------------
-      const ktcVal =
-        typeof row.ktc_value === "number"
-          ? row.ktc_value
-          : safeNumber(row.ktc_value, null);
-
-      const sf =
-        typeof row.sf_value === "number"
-          ? row.sf_value
-          : typeof row.sf === "number"
-          ? row.sf
-          : typeof row.superflex_value === "number"
-          ? row.superflex_value
-          : typeof ktcVal === "number"
-          ? ktcVal
-          : null;
-
-      const oneQb =
-        typeof row.one_qb_value === "number"
-          ? row.one_qb_value
-          : typeof row.one_qb === "number"
-          ? row.one_qb
-          : typeof row.one_qb_rank_value === "number"
-          ? row.one_qb_rank_value
-          : null;
-
-      const rank =
-        typeof row.rank === "number"
-          ? row.rank
-          : typeof row.overall_rank === "number"
-          ? row.overall_rank
-          : typeof row.sf_rank === "number"
-          ? row.sf_rank
-          : typeof row.ktc_rank === "number"
-          ? row.ktc_rank
-          : null;
-
-      const updatedAt =
-        row.updated_at ||
-        row.updated ||
-        row.last_updated ||
-        row.as_of_date ||
-        null;
-
-      const normalized = {
-        sleeperId: key,
-        playerName: row.player_name || row.name || row.full_name || null,
-        position: row.position || row.pos || null,
-        team: row.team || row.nfl_team || null,
-        sfValue: typeof sf === "number" ? sf : null,
-        oneQbValue: typeof oneQb === "number" ? oneQb : null,
-        rank: typeof rank === "number" ? rank : null,
-        updatedAt,
-        mappingType,
-        raw: row,
-      };
-
-      if (!existing) {
-        bySleeperId[key] = normalized;
-        return;
-      }
-
-      // Prefer higher SF value; break ties by more recent updatedAt.
-      const existingVal =
-        typeof existing.sfValue === "number"
-          ? existing.sfValue
-          : existing.oneQbValue || 0;
-      const newVal =
-        typeof normalized.sfValue === "number"
-          ? normalized.sfValue
-          : normalized.oneQbValue || 0;
-
-      if (newVal > existingVal + 0.0001) {
-        bySleeperId[key] = normalized;
-        return;
-      }
-
-      if (
-        newVal === existingVal &&
-        normalized.updatedAt &&
-        (!existing.updatedAt ||
-          new Date(normalized.updatedAt) > new Date(existing.updatedAt))
-      ) {
-        bySleeperId[key] = normalized;
-      }
+      if (!sid) return;
+      addMapping(bySleeperId, sid, row, "explicit");
+      explicitMapped += 1;
     });
 
+    // 2B. Fuzzy mapping via normalizedName + normalizedPosition
+    sleeperIds.forEach((sleeperId) => {
+      // If we already have an explicit mapping, keep it.
+      if (bySleeperId[sleeperId]) return;
+
+      const meta = sleeperMap[sleeperId];
+      if (!meta) return;
+
+      const fullName =
+        meta.full_name ||
+        (meta.first_name && meta.last_name
+          ? meta.first_name + " " + meta.last_name
+          : null) ||
+        meta.search_full_name ||
+        meta.display_name ||
+        "";
+
+      const nameKey = normalizeName(fullName);
+      const posKey = normalizePosition(meta.position);
+
+      if (!nameKey || !posKey) return;
+
+      const key = nameKey + "_" + posKey;
+      const hit = ktcLookup[key];
+      if (!hit) return;
+
+      addMapping(bySleeperId, sleeperId, hit.row, "fuzzy");
+      fuzzyMapped += 1;
+    });
+
+    const mappedCount = Object.keys(bySleeperId).length;
     cacheBySleeperId = bySleeperId;
 
     console.log(
-      "[KTCClient] Loaded " +
-        Object.keys(cacheBySleeperId).length +
-        " unique Sleeper IDs into KTC cache " +
-        `(explicit=${explicitMapped}, fuzzy=${fuzzyMapped}, skipped=${skippedNoId}).`
+      "[KTCClient] Mapped " +
+        mappedCount +
+        " Sleeper IDs to KTC values (explicit=" +
+        explicitMapped +
+        ", fuzzy=" +
+        fuzzyMapped +
+        ", totalKtcPlayers=" +
+        usableKtcRows +
+        ")."
     );
 
-    if (!Object.keys(cacheBySleeperId).length) {
+    if (!mappedCount) {
       console.warn(
         "[KTCClient] No usable KTC rows after mapping. " +
-          "Check your ktc_values name/position columns, Sleeper player map, and sleeper_id population."
+          "Check ktc_values.player_name / .position formats and the Sleeper player map."
       );
     }
 
@@ -457,9 +449,8 @@ import { supabase } from "./supabase.js";
   function getBestValueForSleeperId(sleeperId) {
     const row = getBySleeperId(sleeperId);
     if (!row) return null;
-    if (typeof row.sfValue === "number") return row.sfValue;
-    if (typeof row.oneQbValue === "number") return row.oneQbValue;
-    return null;
+    const v = safeNumber(row.value, null);
+    return v == null ? null : v;
   }
 
   function debugDump() {
@@ -476,5 +467,7 @@ import { supabase } from "./supabase.js";
     getBySleeperId,
     getBestValueForSleeperId,
     _debugDump: debugDump,
+    _normalizeName: normalizeName,
+    _normalizePosition: normalizePosition,
   };
 })();
